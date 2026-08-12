@@ -6,7 +6,18 @@ param(
 $ErrorActionPreference = 'Stop'
 $SourceDir = Split-Path -Parent $PSScriptRoot
 
-Write-Host 'Smart Organizer v0.2.0 installer' -ForegroundColor Cyan
+$version = ''
+$versionPath = Join-Path $SourceDir 'version.json'
+if (Test-Path -LiteralPath $versionPath) {
+    try {
+        $version = (Get-Content -LiteralPath $versionPath -Raw | ConvertFrom-Json).version
+    } catch {}
+}
+if ($version) {
+    Write-Host "Smart Organizer v$version installer" -ForegroundColor Cyan
+} else {
+    Write-Host 'Smart Organizer installer' -ForegroundColor Cyan
+}
 
 if (-not (Test-Path -LiteralPath 'D:\')) {
     Write-Host 'Drive D: was not found. Using Documents\Smart-Organizer.' -ForegroundColor Yellow
@@ -15,7 +26,7 @@ if (-not (Test-Path -LiteralPath 'D:\')) {
 
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-$exclude = @('data', 'logs', '.update-staging')
+$exclude = @('data', 'logs', '.update-staging', '.runtime-new', '.runtime-backup')
 Get-ChildItem -LiteralPath $SourceDir -Force |
     Where-Object { $exclude -notcontains $_.Name } |
     ForEach-Object {
@@ -28,6 +39,9 @@ New-Item -ItemType Directory -Force -Path (Join-Path $InstallDir 'logs') | Out-N
 $exe = Join-Path $InstallDir 'SmartOrganizer.exe'
 if (-not (Test-Path -LiteralPath $exe)) {
     throw "SmartOrganizer.exe was not found after installation: $exe"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $InstallDir '_runtime'))) {
+    throw "_runtime was not found after installation: $InstallDir"
 }
 
 if (-not $NoShortcut) {
