@@ -1,0 +1,22 @@
+# Local user data
+/data/
+*.db
+knowledge.db
+history.json
+decisions.json
+projects.json
+rules.json
+versions.json
+
+# Build
+build/
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
