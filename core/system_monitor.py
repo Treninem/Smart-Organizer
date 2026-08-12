@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-import ctypes
-from ctypes import wintypes
 import os
 import re
 import shutil
-import subprocess
 import time
 from pathlib import Path
-
-CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def _format_network_speed(bytes_per_second: float) -> str:
@@ -34,26 +29,8 @@ def _format_bytes(value: int | float | None) -> str:
     return f"{size:.1f} TB"
 
 
-class _MemoryStatusEx(ctypes.Structure):
-    _fields_ = [
-        ("dwLength", ctypes.c_ulong),
-        ("dwMemoryLoad", ctypes.c_ulong),
-        ("ullTotalPhys", ctypes.c_ulonglong),
-        ("ullAvailPhys", ctypes.c_ulonglong),
-        ("ullTotalPageFile", ctypes.c_ulonglong),
-        ("ullAvailPageFile", ctypes.c_ulonglong),
-        ("ullTotalVirtual", ctypes.c_ulonglong),
-        ("ullAvailVirtual", ctypes.c_ulonglong),
-        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-    ]
-
-
-def _filetime_to_int(value) -> int:
-    return (int(value.dwHighDateTime) << 32) + int(value.dwLowDateTime)
-
-
 class SystemMonitor:
-    """Lightweight Windows monitor using only built-in OS/Python facilities."""
+    """Lightweight monitor that degrades safely on older frozen launchers."""
 
     def __init__(self, disk_path: str = "D:\\"):
         if Path(disk_path).exists():
@@ -66,15 +43,27 @@ class SystemMonitor:
     def _cpu_percent(self) -> float | None:
         if os.name != "nt":
             return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+        except Exception:
+            return None
+
+        def filetime_to_int(value) -> int:
+            return (int(value.dwHighDateTime) << 32) + int(value.dwLowDateTime)
+
         idle = wintypes.FILETIME()
         kernel = wintypes.FILETIME()
         user = wintypes.FILETIME()
-        ok = ctypes.windll.kernel32.GetSystemTimes(
-            ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
-        )
+        try:
+            ok = ctypes.windll.kernel32.GetSystemTimes(
+                ctypes.byref(idle), ctypes.byref(kernel), ctypes.byref(user)
+            )
+        except Exception:
+            return None
         if not ok:
             return None
-        current = (_filetime_to_int(idle), _filetime_to_int(kernel), _filetime_to_int(user))
+        current = (filetime_to_int(idle), filetime_to_int(kernel), filetime_to_int(user))
         if self._last_cpu is None:
             self._last_cpu = current
             return None
@@ -90,9 +79,31 @@ class SystemMonitor:
     def _memory(self) -> tuple[float | None, int | None, int | None]:
         if os.name != "nt":
             return None, None, None
-        status = _MemoryStatusEx()
-        status.dwLength = ctypes.sizeof(_MemoryStatusEx)
-        if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        try:
+            import ctypes
+        except Exception:
+            return None, None, None
+
+        class MemoryStatusEx(ctypes.Structure):
+            _fields_ = [
+                ("dwLength", ctypes.c_ulong),
+                ("dwMemoryLoad", ctypes.c_ulong),
+                ("ullTotalPhys", ctypes.c_ulonglong),
+                ("ullAvailPhys", ctypes.c_ulonglong),
+                ("ullTotalPageFile", ctypes.c_ulonglong),
+                ("ullAvailPageFile", ctypes.c_ulonglong),
+                ("ullTotalVirtual", ctypes.c_ulonglong),
+                ("ullAvailVirtual", ctypes.c_ulonglong),
+                ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+            ]
+
+        status = MemoryStatusEx()
+        status.dwLength = ctypes.sizeof(MemoryStatusEx)
+        try:
+            ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+        except Exception:
+            return None, None, None
+        if not ok:
             return None, None, None
         used = int(status.ullTotalPhys - status.ullAvailPhys)
         return float(status.dwMemoryLoad), used, int(status.ullTotalPhys)
@@ -110,20 +121,22 @@ class SystemMonitor:
         if os.name != "nt":
             return None
         try:
+            import subprocess
+        except Exception:
+            return None
+        try:
             proc = subprocess.run(
                 ["netstat", "-e"],
                 capture_output=True,
                 text=True,
                 errors="replace",
                 timeout=3,
-                creationflags=CREATE_NO_WINDOW,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
-        except (OSError, subprocess.SubprocessError):
+        except Exception:
             return None
         if proc.returncode != 0:
             return None
-        # `netstat -e` is localized, so parse the first statistics row with
-        # exactly two integer counters instead of depending on the word "Bytes".
         for line in proc.stdout.splitlines():
             numbers = re.findall(r"\d+", line.replace(",", ""))
             if len(numbers) == 2:
