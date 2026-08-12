@@ -43,6 +43,7 @@ jobs:
           Copy-Item config\*.json package\config\
           Copy-Item installer\Install-SmartOrganizer.ps1 package\installer\
           Copy-Item version.json package\version.json
+          Copy-Item INSTALL.cmd package\INSTALL.cmd
           Copy-Item README.md package\README.md
       - name: Upload package
         uses: actions/upload-artifact@v4
