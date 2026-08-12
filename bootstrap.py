@@ -34,7 +34,6 @@ def _self_test() -> int:
     import ctypes as _ctypes_test  # noqa: F401
     import tkinter.scrolledtext as _scrolledtext_test  # noqa: F401
     import urllib.request as _urllib_test  # noqa: F401
-    print("SmartOrganizer frozen runtime self-test: OK")
     return 0
 
 
