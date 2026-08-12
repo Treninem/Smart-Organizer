@@ -1,5 +1,5 @@
 {
-  "version": "0.2.5",
+  "version": "0.2.6",
   "channel": "stable",
   "files": [
     {
@@ -7,8 +7,20 @@
       "sha256": "09a2aacb870f02f9ef0dc8a32e03927bb81a6296665f6ec0535c5a0e9d9a9086"
     },
     {
+      "path": "core/windows_paths.py",
+      "sha256": "29c6e8a3eb4b690c26c39cc4468cab59c1451479e28c6c790e7a40fc1d9c0e18"
+    },
+    {
+      "path": "core/launcher_update_runtime.py",
+      "sha256": "6fac06385c18c79608b51434f39f7e5adb503efa3a8074a51ec5da005aaa0a3e"
+    },
+    {
+      "path": "core/auto_update_runtime.py",
+      "sha256": "f7ebe73cd4427a73ee4d5e2efc4a609dc5db22e784f4b4fa9da725b318aff057"
+    },
+    {
       "path": "version.json",
-      "sha256": "9caa2dd5180080bfcbe711958cc8d0c91580f36e7b55f71ae0eea8a4adb8c0c3"
+      "sha256": "2e08e658269713202a547ecf812c2f77fc2f0886cc662619802b5ddb9ffb0c74"
     }
   ],
   "preserve": [
