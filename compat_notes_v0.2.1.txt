@@ -1,0 +1,1 @@
+Temporary compatibility marker for v0.2.1 startup self-update migration.
