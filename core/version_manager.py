@@ -37,16 +37,30 @@ class VersionInfo:
         return padded[:4] + (CHANNEL_RANK.get(self.channel, 0), self.qualifier_number)
 
 
+def _plausible_match(match: re.Match) -> bool:
+    raw = match.group(0)
+    explicit_prefix = bool(re.match(r"(?i)^\s*(?:v|version)", raw))
+    numeric_components = sum(1 for item in match.groups()[:4] if item is not None)
+    has_qualifier = bool(match.group(5))
+
+    # Bare numbers in ordinary filenames are usually years, chapter numbers,
+    # dimensions or counters. Treat them as versions only when the author made
+    # the intent explicit (v12/version12), supplied a dotted version (1.2), or
+    # attached a release qualifier (12-beta).
+    return explicit_prefix or numeric_components >= 2 or has_qualifier
+
+
 def detect_version(value: str) -> VersionInfo | None:
     stem = Path(value).stem
-    matches = list(VERSION_RE.finditer(stem))
+    matches = [match for match in VERSION_RE.finditer(stem) if _plausible_match(match)]
     if not matches:
         return None
     match = max(
         matches,
         key=lambda m: (
             int(bool(re.search(r"(?i)(?:^|[^a-z0-9])(?:v|version)", m.group(0)))),
-            int("." in m.group(0)),
+            sum(1 for item in m.groups()[:4] if item is not None),
+            int(bool(m.group(5))),
             len(m.group(0)),
         ),
     )
@@ -65,7 +79,8 @@ def detect_version(value: str) -> VersionInfo | None:
 def artifact_key(name: str) -> str:
     stem = Path(name).stem
     stem = COPY_SUFFIX_RE.sub("", stem)
-    match = VERSION_RE.search(stem)
+    matches = [match for match in VERSION_RE.finditer(stem) if _plausible_match(match)]
+    match = matches[0] if matches else None
     if match:
         stem = stem[: match.start()] + " " + stem[match.end() :]
     stem = re.sub(r"(?i)\b(?:final|latest|release|build)\b", " ", stem)
