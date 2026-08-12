@@ -1,5 +1,5 @@
 {
-  "version": "0.2.6",
+  "version": "0.2.7",
   "channel": "stable",
   "files": [
     {
@@ -16,11 +16,11 @@
     },
     {
       "path": "core/auto_update_runtime.py",
-      "sha256": "f7ebe73cd4427a73ee4d5e2efc4a609dc5db22e784f4b4fa9da725b318aff057"
+      "sha256": "845b6c7c035fc58ca583b1fd0cf63b6919bc9bbc0df4531af0999c2f3c790a4e"
     },
     {
       "path": "version.json",
-      "sha256": "2e08e658269713202a547ecf812c2f77fc2f0886cc662619802b5ddb9ffb0c74"
+      "sha256": "0a5decbead510dbd364424031b7ad0ba231eab10cf464f5290202af9dcddf2fc"
     }
   ],
   "preserve": [
