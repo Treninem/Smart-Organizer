@@ -1,0 +1,52 @@
+name: Build Windows
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip pyinstaller
+      - name: Build SmartOrganizer.exe
+        shell: pwsh
+        run: >
+          pyinstaller --noconfirm --clean --onefile --windowed
+          --name SmartOrganizer
+          bootstrap.py
+      - name: Build Updater.exe
+        shell: pwsh
+        run: >
+          pyinstaller --noconfirm --clean --onefile
+          --name updater
+          updater_main.py
+      - name: Stage portable package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package\config, package\data, package\logs, package\installer | Out-Null
+          Copy-Item dist\SmartOrganizer.exe package\SmartOrganizer.exe
+          Copy-Item dist\updater.exe package\updater.exe
+          Copy-Item main.py package\main.py
+          Copy-Item app package\app -Recurse
+          Copy-Item core package\core -Recurse
+          Copy-Item modules package\modules -Recurse
+          Copy-Item config\*.json package\config\
+          Copy-Item installer\Install-SmartOrganizer.ps1 package\installer\
+          Copy-Item version.json package\version.json
+          Copy-Item README.md package\README.md
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: Smart-Organizer-Windows-v0.1.0
+          path: package/
+          if-no-files-found: error

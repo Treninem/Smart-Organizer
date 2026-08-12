@@ -1,0 +1,7 @@
+{
+  "safe_mode": true,
+  "scan_max_files": 250000,
+  "check_updates_on_start": true,
+  "preferred_install_dir": "D:\\Smart-Organizer",
+  "preserve_existing_tree": true
+}

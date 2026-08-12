@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "principles": [
+    "Сначала изучай существующую структуру пользователя; никогда не перестраивай её ради собственного шаблона.",
+    "Если подходящая папка уже существует, предпочитай её созданию новой.",
+    "В v0.1.0 только анализ: не перемещать, не переименовывать и не удалять пользовательские файлы.",
+    "Точная копия определяется содержимым (SHA-256), а не только похожим именем.",
+    "Разные версии одного проекта не являются дубликатами автоматически.",
+    "Локальная база data/ является личной памятью и не должна отправляться в GitHub или заменяться обновлением."
+  ],
+  "projects": [
+    {
+      "name": "VoxLyra",
+      "type": "Telegram/VK bot + Mini App",
+      "repository": null,
+      "aliases": ["Vox Lyra", "VoxlyraBot"],
+      "keywords": ["voxlyra", "vox", "comic", "comics", "reader", "library", "manga", "manhwa", "telegram", "vk", "mini app", "books_import"],
+      "status": "current",
+      "notes": "Расширенный текущий проект чтения. Не путать со старым Boostora."
+    },
+    {
+      "name": "Boostora",
+      "type": "older bot project",
+      "repository": null,
+      "aliases": ["Boostora bot"],
+      "keywords": ["boostora"],
+      "status": "legacy",
+      "notes": "Более ранний проект до VoxLyra. Не считать файлы Boostora актуальными файлами VoxLyra без дополнительных признаков."
+    },
+    {
+      "name": "ImPuls-Minecraft",
+      "type": "Minecraft server",
+      "repository": "Treninem/ImPuls-Minecraft",
+      "aliases": ["ImPuls Minecraft", "Minecraft ImPuls"],
+      "keywords": ["impuls", "minecraft", "datapack", "plugin", "plugins", "world", "server.properties", "minekeep"],
+      "status": "current",
+      "notes": "Minecraft-проект. Не путать с другими проектами ImPuls."
+    },
+    {
+      "name": "ProControl",
+      "type": "production Telegram bot + Mini App",
+      "repository": "Treninem/Proizvodstvo",
+      "aliases": ["ProControl", "ProChckbot", "Производство"],
+      "keywords": ["procontrol", "prochck", "production", "factory", "miniapp", "склад", "производство", "фасовка", "экструзия"],
+      "status": "current",
+      "notes": "Производственный учёт. Данные разных компаний нельзя смешивать."
+    },
+    {
+      "name": "Smart-Organizer",
+      "type": "Windows desktop utility",
+      "repository": "Treninem/Smart-Organizer",
+      "aliases": ["Smart Organizer"],
+      "keywords": ["smart organizer", "smart-organizer", "knowledge.db", "file sorter"],
+      "status": "current",
+      "notes": "Собственные файлы программы. data/ и logs/ локальные и не заменяются обновлением."
+    }
+  ],
+  "rules": [
+    {
+      "id": "preserve-existing-tree",
+      "action": "prefer_existing_folder",
+      "confidence": 1.0,
+      "explanation": "Пользовательская структура имеет приоритет над автоматически предлагаемой."
+    },
+    {
+      "id": "duplicate-by-hash",
+      "action": "duplicate_candidate_only_after_sha256_match",
+      "confidence": 1.0,
+      "explanation": "bot.exe и bot(1).exe можно считать точными копиями только после совпадения SHA-256."
+    },
+    {
+      "id": "version-order",
+      "action": "compare_semver_before_old_version_candidate",
+      "confidence": 0.95,
+      "explanation": "v1.0.3 старее v3.x одного и того же проекта, но сначала подтвердить идентичность проекта и тип релиза."
+    },
+    {
+      "id": "protect-local-memory",
+      "action": "never_replace_data_directory_during_update",
+      "confidence": 1.0,
+      "explanation": "knowledge.db, projects.json, rules.json, versions.json, history.json и decisions.json являются локальной памятью."
+    }
+  ]
+}
