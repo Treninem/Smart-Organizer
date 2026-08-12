@@ -6,7 +6,11 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: smart-organizer-windows-release
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -71,9 +75,17 @@ jobs:
           if (-not (Test-Path (Join-Path $testDir 'data'))) { throw 'data directory missing after install test' }
           if (-not (Test-Path (Join-Path $testDir 'logs'))) { throw 'logs directory missing after install test' }
 
+      - name: Publish rolling launcher release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete auto-latest --cleanup-tag -y 2>$null
+          gh release create auto-latest "dist/SmartOrganizer.exe#SmartOrganizer.exe" "dist/updater.exe#updater.exe" --target "${{ github.sha }}" --title "Smart Organizer Auto Update" --notes "Rolling binaries used by the installed Smart Organizer for autonomous launcher updates."
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: Smart-Organizer-Windows-v0.2.0
+          name: Smart-Organizer-Windows-latest
           path: package/
           if-no-files-found: error
