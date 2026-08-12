@@ -15,11 +15,18 @@ class FrozenCompatibilityTests(unittest.TestCase):
         self.assertNotIn("ctypes", top_level_imports)
         self.assertNotIn("ctypes.wintypes", top_level_imports)
 
-    def test_launcher_binary_update_runs_after_ui_start(self):
+    def test_atomic_runtime_update_replaces_old_launcher_logic(self):
         source = Path("core/auto_update_runtime.py").read_text(encoding="utf-8")
-        self.assertIn("start_launcher_update_check", source)
-        self.assertIn("self.after(1500", source)
-        self.assertIn("SmartOrganizer.new.exe", source)
+        self.assertIn("download_runtime_bundle", source)
+        self.assertIn("create_apply_script", source)
+        self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", source)
+        self.assertNotIn("SmartOrganizer.new.exe", source)
+
+    def test_workflow_builds_onedir_not_onefile_for_main_app(self):
+        source = Path(".github/workflows/build-windows.yml").read_text(encoding="utf-8")
+        self.assertIn("--onedir --windowed", source)
+        self.assertIn("--contents-directory _runtime", source)
+        self.assertIn("SmartOrganizer-runtime.zip", source)
 
     def test_bootstrap_has_frozen_self_test(self):
         source = Path("bootstrap.py").read_text(encoding="utf-8")
