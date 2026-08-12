@@ -21,18 +21,6 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Refresh update manifest hashes
-        shell: pwsh
-        run: |
-          python tools/update_manifest_hashes.py
-          if (-not (git diff --quiet -- update-manifest.json)) {
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add update-manifest.json
-            git commit -m "Refresh update manifest hashes [skip ci]"
-            git push
-          }
-
       - name: Run core tests
         run: python -m unittest discover -s tests -v
 
@@ -42,50 +30,60 @@ jobs:
       - name: Generate application icon
         run: python tools/generate_icon.py
 
-      - name: Build SmartOrganizer.exe
+      - name: Build SmartOrganizer onedir runtime
         shell: pwsh
         run: >
-          pyinstaller --noconfirm --clean --onefile --windowed
+          pyinstaller --noconfirm --clean --onedir --windowed
           --name SmartOrganizer
+          --contents-directory _runtime
           --icon assets/SmartOrganizer.ico
           --hidden-import ctypes
           --hidden-import _ctypes
           --hidden-import ctypes.wintypes
           bootstrap.py
 
-      - name: Frozen launcher self-test
+      - name: Frozen runtime self-test
         shell: pwsh
         run: |
-          $process = Start-Process -FilePath "$PWD\dist\SmartOrganizer.exe" -ArgumentList "--self-test" -Wait -PassThru
-          if ($process.ExitCode -ne 0) { throw "Frozen launcher self-test failed with exit code $($process.ExitCode)" }
+          $exe = "$PWD\dist\SmartOrganizer\SmartOrganizer.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Frozen runtime self-test failed with exit code $($process.ExitCode)" }
+          if (-not (Test-Path "$PWD\dist\SmartOrganizer\_runtime")) { throw '_runtime directory missing from onedir build' }
 
-      - name: Build Updater.exe
+      - name: Build recovery updater
         shell: pwsh
         run: >
           pyinstaller --noconfirm --clean --onefile
           --name updater
           updater_main.py
 
-      - name: Stage portable package
+      - name: Stage runtime and installer packages
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path package\config, package\data, package\logs, package\installer | Out-Null
-          Copy-Item dist\SmartOrganizer.exe package\SmartOrganizer.exe
-          Copy-Item dist\updater.exe package\updater.exe
-          Copy-Item main.py package\main.py
-          Copy-Item app package\app -Recurse
-          Copy-Item core package\core -Recurse
-          Copy-Item modules package\modules -Recurse
-          Copy-Item config\*.json package\config\
-          Copy-Item installer\Install-SmartOrganizer.ps1 package\installer\
-          Copy-Item version.json package\version.json
-          Copy-Item update-manifest.json package\update-manifest.json
+          New-Item -ItemType Directory -Force -Path runtime-package, package, package\data, package\logs, package\installer | Out-Null
+
+          Copy-Item dist\SmartOrganizer\* runtime-package\ -Recurse -Force
+          Copy-Item dist\updater.exe runtime-package\updater.exe
+          Copy-Item main.py runtime-package\main.py
+          Copy-Item app runtime-package\app -Recurse
+          Copy-Item core runtime-package\core -Recurse
+          Copy-Item modules runtime-package\modules -Recurse
+          Copy-Item config runtime-package\config -Recurse
+          Copy-Item version.json runtime-package\version.json
+          Copy-Item runtime-manifest.json runtime-package\runtime-manifest.json
+          Set-Content -LiteralPath runtime-package\runtime-build.txt -Value "${{ github.sha }}" -Encoding Ascii -NoNewline
+
+          Get-ChildItem -Path runtime-package -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
+          Get-ChildItem -Path runtime-package -Recurse -File -Filter *.pyc | Remove-Item -Force
+
+          Copy-Item runtime-package\* package\ -Recurse -Force
+          Copy-Item installer\Install-SmartOrganizer.ps1 package\installer\Install-SmartOrganizer.ps1
           Copy-Item INSTALL.cmd package\INSTALL.cmd
           Copy-Item README.md package\README.md
-          Get-ChildItem -Path package -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
-          Get-ChildItem -Path package -Recurse -File -Filter *.pyc | Remove-Item -Force
 
-      - name: Smoke test installer with Windows PowerShell 5 compatible host
+          Compress-Archive -Path runtime-package\* -DestinationPath dist\SmartOrganizer-runtime.zip -CompressionLevel Optimal -Force
+
+      - name: Smoke test real installed package
         shell: pwsh
         run: |
           $testDir = Join-Path $env:RUNNER_TEMP 'Smart-Organizer-Install-Test'
@@ -93,21 +91,24 @@ jobs:
           & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PWD\package\installer\Install-SmartOrganizer.ps1" -InstallDir $testDir -NoShortcut
           if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
           if (-not (Test-Path (Join-Path $testDir 'SmartOrganizer.exe'))) { throw 'SmartOrganizer.exe missing after install test' }
+          if (-not (Test-Path (Join-Path $testDir '_runtime'))) { throw '_runtime missing after install test' }
           if (-not (Test-Path (Join-Path $testDir 'updater.exe'))) { throw 'updater.exe missing after install test' }
           if (-not (Test-Path (Join-Path $testDir 'data'))) { throw 'data directory missing after install test' }
           if (-not (Test-Path (Join-Path $testDir 'logs'))) { throw 'logs directory missing after install test' }
+          $process = Start-Process -FilePath (Join-Path $testDir 'SmartOrganizer.exe') -ArgumentList '--self-test' -Wait -PassThru -WorkingDirectory $testDir
+          if ($process.ExitCode -ne 0) { throw "Installed runtime self-test failed with exit code $($process.ExitCode)" }
 
-      - name: Publish rolling launcher release
+      - name: Publish atomic runtime update
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete auto-latest --cleanup-tag -y 2>$null
-          gh release create auto-latest "dist/SmartOrganizer.exe#SmartOrganizer.exe" "dist/updater.exe#updater.exe" --target "${{ github.sha }}" --title "Smart Organizer Auto Update" --notes "Rolling binaries used by the installed Smart Organizer for autonomous launcher updates."
+          gh release create auto-latest "dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip" "dist/updater.exe#updater.exe" --target "${{ github.sha }}" --title "Smart Organizer Runtime Update" --notes "Atomic onedir runtime bundle. data/ and logs/ are never included or replaced."
 
-      - name: Upload package
+      - name: Upload installer package
         uses: actions/upload-artifact@v4
         with:
-          name: Smart-Organizer-Windows-latest
+          name: Smart-Organizer-Windows-v0.2.7
           path: package/
           if-no-files-found: error
