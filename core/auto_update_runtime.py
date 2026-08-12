@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import threading
 import tkinter as tk
-from pathlib import Path
 from tkinter import messagebox, ttk
 
+from core.launcher_update_runtime import start_launcher_update_check
 from core.paths import app_root
 from core.updater import apply_source_update, fetch_manifest, update_available
 
@@ -28,7 +29,7 @@ def _worker_active(app) -> bool:
 
 
 def install_auto_update_runtime(main_window) -> None:
-    """Install configurable periodic updates and automatic idle restart."""
+    """Install periodic source/binary updates and automatic idle restart."""
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_auto_update_runtime_installed", False):
         return
@@ -45,12 +46,11 @@ def install_auto_update_runtime(main_window) -> None:
             except Exception:
                 pass
             self._auto_update_after_id = None
-
         if not getattr(self, "auto_update_enabled", True):
             return
-
         minutes = normalize_interval_minutes(
-            delay_minutes if delay_minutes is not None else getattr(self, "auto_update_interval_minutes", DEFAULT_UPDATE_INTERVAL_MINUTES)
+            delay_minutes if delay_minutes is not None
+            else getattr(self, "auto_update_interval_minutes", DEFAULT_UPDATE_INTERVAL_MINUTES)
         )
         self._auto_update_after_id = self.after(minutes * 60_000, self.check_updates_silent)
 
@@ -61,10 +61,26 @@ def install_auto_update_runtime(main_window) -> None:
         root = app_root()
         try:
             if getattr(sys, "frozen", False):
-                command = [sys.executable]
+                new_exe = root / "SmartOrganizer.new.exe"
+                current_exe = root / "SmartOrganizer.exe"
+                if new_exe.exists():
+                    script = root / ".apply-smart-organizer-update.cmd"
+                    lines = [
+                        "@echo off",
+                        "setlocal",
+                        ":retry",
+                        "timeout /t 1 /nobreak >nul",
+                        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1',
+                        "if errorlevel 1 goto retry",
+                        f'start "" "{current_exe}"',
+                        'del "%~f0"',
+                    ]
+                    script.write_text("\r\n".join(lines) + "\r\n", encoding="ascii")
+                    os.startfile(str(script))
+                else:
+                    subprocess.Popen([sys.executable], cwd=str(root))
             else:
-                command = [sys.executable, str(root / "main.py")]
-            subprocess.Popen(command, cwd=str(root))
+                subprocess.Popen([sys.executable, str(root / "main.py")], cwd=str(root))
             try:
                 self.db.log_action("restart-after-update", None, "ok", "automatic idle restart")
             except Exception:
@@ -88,7 +104,9 @@ def install_auto_update_runtime(main_window) -> None:
         if not getattr(self, "_restart_pending", False):
             return
         if _worker_active(self):
-            self.status_var.set("Обновление установлено. Перезапуск будет выполнен автоматически после завершения текущей операции.")
+            self.status_var.set(
+                "Обновление установлено. Перезапуск будет выполнен автоматически после завершения текущей операции."
+            )
             self.after(1000, self._restart_when_idle)
             return
         self.status_var.set("Обновление установлено. Smart Organizer перезапускается автоматически…")
@@ -113,7 +131,6 @@ def install_auto_update_runtime(main_window) -> None:
         elif manual:
             self.status_var.set("Установлена актуальная версия.")
             messagebox.showinfo("Обновления", "Установлена актуальная версия.")
-
         self._schedule_next_update()
 
     def _start_update_check(self, manual: bool = False) -> None:
@@ -122,12 +139,9 @@ def install_auto_update_runtime(main_window) -> None:
             if manual:
                 self.status_var.set("Проверка обновлений уже выполняется.")
             return
-
         if not manual and _worker_active(self):
-            # Do not compete with scans/hashing/archive analysis. Try again soon.
             self._schedule_next_update(1)
             return
-
         if manual:
             self.status_var.set("Проверяю GitHub…")
 
@@ -195,35 +209,40 @@ def install_auto_update_runtime(main_window) -> None:
             text="Автоматически проверять и устанавливать обновления",
             variable=self._auto_update_enabled_var,
         ).grid(row=0, column=0, columnspan=3, sticky="w")
-
         ttk.Label(frame, text="Проверять каждые").grid(row=1, column=0, sticky="w", pady=(10, 0))
-        ttk.Entry(frame, textvariable=self._auto_update_interval_var, width=8).grid(row=1, column=1, sticky="w", padx=6, pady=(10, 0))
-        ttk.Label(frame, text="минут (например: 10, 30, 60, 120)").grid(row=1, column=2, sticky="w", pady=(10, 0))
-
+        ttk.Entry(frame, textvariable=self._auto_update_interval_var, width=8).grid(
+            row=1, column=1, sticky="w", padx=6, pady=(10, 0)
+        )
+        ttk.Label(frame, text="минут (например: 10, 30, 60, 120)").grid(
+            row=1, column=2, sticky="w", pady=(10, 0)
+        )
         ttk.Label(
             frame,
-            text="После установки обновления программа сама перезапустится, когда не выполняется анализ или другая операция.",
+            text=(
+                "После установки кода или нового ядра EXE программа сама перезапустится, "
+                "когда не выполняется анализ или другая операция."
+            ),
             wraplength=720,
             justify="left",
         ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
-
-        ttk.Button(frame, text="Сохранить настройки обновлений", command=self._save_auto_update_settings).grid(
-            row=3, column=0, columnspan=3, sticky="w", pady=(12, 0)
-        )
+        ttk.Button(
+            frame,
+            text="Сохранить настройки обновлений",
+            command=self._save_auto_update_settings,
+        ).grid(row=3, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
     def __init__(self, *args, **kwargs):
         self._auto_update_after_id = None
         self._update_thread = None
+        self._launcher_update_thread = None
         self._restart_pending = False
         self._restart_started = False
         original_init(self, *args, **kwargs)
-
         self.auto_update_enabled = bool(self.db.get_setting("auto_update_enabled", True))
         self.auto_update_interval_minutes = normalize_interval_minutes(
             self.db.get_setting("auto_update_interval_minutes", DEFAULT_UPDATE_INTERVAL_MINUTES)
         )
-        # original __init__ already schedules check_updates_silent after startup.
-        # The patched method below turns that first check into the recurring cycle.
+        self.after(1500, lambda: start_launcher_update_check(self))
 
     cls.__init__ = __init__
     cls._schedule_next_update = _schedule_next_update
