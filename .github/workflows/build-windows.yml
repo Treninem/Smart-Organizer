@@ -17,12 +17,15 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install build tooling
-        run: python -m pip install --upgrade pip pyinstaller
+        run: python -m pip install --upgrade pip pyinstaller pillow
+      - name: Generate application icon
+        run: python tools/generate_icon.py
       - name: Build SmartOrganizer.exe
         shell: pwsh
         run: >
           pyinstaller --noconfirm --clean --onefile --windowed
           --name SmartOrganizer
+          --icon assets/SmartOrganizer.ico
           bootstrap.py
       - name: Build Updater.exe
         shell: pwsh
