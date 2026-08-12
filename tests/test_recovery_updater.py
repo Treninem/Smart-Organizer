@@ -32,10 +32,13 @@ class RecoveryUpdaterTests(unittest.TestCase):
                 patch.object(updater_main, "launch_apply_script") as launch,
             ):
                 self.assertEqual(updater_main.main(), 0)
-            download.assert_called_once_with(root, release["assets"][0])
+            self.assertEqual(download.call_count, 1)
+            called_root, called_asset = download.call_args.args
+            self.assertTrue(Path(called_root).samefile(root))
+            self.assertEqual(called_asset, release["assets"][0])
             self.assertEqual(create_script.call_count, 1)
             args = create_script.call_args.args
-            self.assertEqual(args[0], root)
+            self.assertTrue(Path(args[0]).samefile(root))
             self.assertEqual(args[1], bundle)
             self.assertIsInstance(args[2], int)
             launch.assert_called_once_with(script)
@@ -58,7 +61,10 @@ class RecoveryUpdaterTests(unittest.TestCase):
                 patch.object(updater_main, "launch_apply_script"),
             ):
                 self.assertEqual(updater_main.main(), 0)
-            download.assert_called_once_with(root.resolve(), release["assets"][0])
+            self.assertEqual(download.call_count, 1)
+            called_root, called_asset = download.call_args.args
+            self.assertTrue(Path(called_root).samefile(root))
+            self.assertEqual(called_asset, release["assets"][0])
 
     def test_check_mode_does_not_modify_runtime(self):
         release = {"assets": [{"name": "SmartOrganizer-runtime.zip"}]}
