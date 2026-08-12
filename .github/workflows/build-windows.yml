@@ -16,10 +16,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Run core tests
+        run: python -m unittest discover -s tests -v
+
       - name: Install build tooling
         run: python -m pip install --upgrade pip pyinstaller pillow
+
       - name: Generate application icon
         run: python tools/generate_icon.py
+
       - name: Build SmartOrganizer.exe
         shell: pwsh
         run: >
@@ -27,12 +33,14 @@ jobs:
           --name SmartOrganizer
           --icon assets/SmartOrganizer.ico
           bootstrap.py
+
       - name: Build Updater.exe
         shell: pwsh
         run: >
           pyinstaller --noconfirm --clean --onefile
           --name updater
           updater_main.py
+
       - name: Stage portable package
         shell: pwsh
         run: |
@@ -48,9 +56,22 @@ jobs:
           Copy-Item version.json package\version.json
           Copy-Item INSTALL.cmd package\INSTALL.cmd
           Copy-Item README.md package\README.md
+
+      - name: Smoke test installer with Windows PowerShell 5 compatible host
+        shell: pwsh
+        run: |
+          $testDir = Join-Path $env:RUNNER_TEMP 'Smart-Organizer-Install-Test'
+          Remove-Item -Recurse -Force $testDir -ErrorAction SilentlyContinue
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PWD\package\installer\Install-SmartOrganizer.ps1" -InstallDir $testDir -NoShortcut
+          if ($LASTEXITCODE -ne 0) { throw "Installer failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path (Join-Path $testDir 'SmartOrganizer.exe'))) { throw 'SmartOrganizer.exe missing after install test' }
+          if (-not (Test-Path (Join-Path $testDir 'updater.exe'))) { throw 'updater.exe missing after install test' }
+          if (-not (Test-Path (Join-Path $testDir 'data'))) { throw 'data directory missing after install test' }
+          if (-not (Test-Path (Join-Path $testDir 'logs'))) { throw 'logs directory missing after install test' }
+
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
-          name: Smart-Organizer-Windows-v0.1.0
+          name: Smart-Organizer-Windows-v0.1.0-r2
           path: package/
           if-no-files-found: error
