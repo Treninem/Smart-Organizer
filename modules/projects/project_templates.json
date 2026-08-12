@@ -1,0 +1,17 @@
+{
+  "TelegramBot": {
+    "keywords": ["telegram", "bot", "miniapp", "api"]
+  },
+  "MinecraftServer": {
+    "keywords": ["minecraft", "datapack", "plugins", "server"]
+  },
+  "Game": {
+    "keywords": ["game", "unity", "unreal"]
+  },
+  "Website": {
+    "keywords": ["html", "css", "javascript", "website"]
+  },
+  "Production": {
+    "keywords": ["production", "factory", "miniapp"]
+  }
+}
