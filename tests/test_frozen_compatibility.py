@@ -33,6 +33,16 @@ class FrozenCompatibilityTests(unittest.TestCase):
         self.assertIn("--self-test", source)
         self.assertIn("import ctypes as _ctypes_test", source)
 
+    def test_recovery_updater_installs_verified_full_runtime(self):
+        source = Path("updater_main.py").read_text(encoding="utf-8")
+        self.assertIn("fetch_runtime_manifest", source)
+        self.assertIn("fetch_runtime_release", source)
+        self.assertIn("find_runtime_asset", source)
+        self.assertIn("download_runtime_bundle", source)
+        self.assertIn("create_apply_script", source)
+        self.assertIn("launch_apply_script", source)
+        self.assertNotIn("apply_source_update", source)
+
 
 if __name__ == "__main__":
     unittest.main()
