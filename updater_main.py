@@ -19,7 +19,7 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="Только проверить доступность полного runtime-пакета",
+        help="Check full runtime package availability without changing files",
     )
     # Keep --apply for compatibility with older instructions. Applying is now
     # also the default so updater.exe can be used by double-click as a repair tool.
@@ -30,11 +30,11 @@ def main() -> int:
     release = fetch_runtime_release()
     asset = find_runtime_asset(release)
     if not asset:
-        raise RuntimeError("Полный Windows runtime-пакет SmartOrganizer-runtime.zip не опубликован")
+        raise RuntimeError("SmartOrganizer-runtime.zip is not published")
 
     version = str(manifest.get("version", "?"))
     if args.check:
-        print(f"Доступна версия: {version}")
+        print(f"Available version: {version}")
         print(f"Runtime: {asset.get('name', '?')}")
         return 0
 
@@ -42,9 +42,9 @@ def main() -> int:
     bundle = download_runtime_bundle(root, asset)
     script = create_apply_script(root, bundle, os.getpid())
     launch_apply_script(script)
-    print(f"Smart Organizer {version}: полный runtime скачан и проверен.")
-    print("Обновление будет применено автоматически после закрытия updater.exe.")
-    print("Папки data/ и logs/ не изменяются.")
+    print(f"Smart Organizer {version}: verified full runtime downloaded.")
+    print("Update will be applied automatically after updater.exe exits.")
+    print("data/ and logs/ are preserved.")
     return 0
 
 
