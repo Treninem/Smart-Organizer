@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
-import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -26,12 +24,21 @@ def _find_7zip() -> str | None:
 
 
 def _list_zip(path: Path) -> tuple[list[str], int, str]:
+    try:
+        import zipfile
+    except Exception as exc:
+        raise RuntimeError("ZIP analyzer is unavailable in this installed launcher.") from exc
     with zipfile.ZipFile(path) as zf:
         infos = [x for x in zf.infolist() if not x.is_dir()]
         return [x.filename for x in infos], sum(x.file_size for x in infos), "python-zipfile"
 
 
 def _list_7zip(path: Path) -> tuple[list[str], int, str]:
+    try:
+        import subprocess
+    except Exception as exc:
+        raise RuntimeError("7-Zip analyzer is unavailable in this installed launcher.") from exc
+
     exe = _find_7zip()
     if not exe:
         raise RuntimeError("Для анализа RAR/7Z нужен бесплатный 7-Zip. ZIP анализируется без него.")
