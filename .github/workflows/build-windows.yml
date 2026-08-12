@@ -21,6 +21,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Refresh update manifest hashes
+        shell: pwsh
+        run: |
+          python tools/update_manifest_hashes.py
+          if (-not (git diff --quiet -- update-manifest.json)) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add update-manifest.json
+            git commit -m "Refresh update manifest hashes [skip ci]"
+            git push
+          }
+
       - name: Run core tests
         run: python -m unittest discover -s tests -v
 
@@ -67,6 +79,7 @@ jobs:
           Copy-Item config\*.json package\config\
           Copy-Item installer\Install-SmartOrganizer.ps1 package\installer\
           Copy-Item version.json package\version.json
+          Copy-Item update-manifest.json package\update-manifest.json
           Copy-Item INSTALL.cmd package\INSTALL.cmd
           Copy-Item README.md package\README.md
           Get-ChildItem -Path package -Recurse -Directory -Filter __pycache__ | Remove-Item -Recurse -Force
