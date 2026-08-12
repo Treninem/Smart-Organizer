@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from collections import Counter
 from pathlib import Path
 
@@ -47,8 +46,6 @@ def rank_existing_folders(record: dict, folders: list[dict], projects: list[dict
         lower_path = path.lower()
         lower_name = name.lower()
         score = 0
-        if path == parent:
-            score += 30
         if project:
             for alias in aliases:
                 if alias and alias in lower_path:
@@ -59,6 +56,12 @@ def rank_existing_folders(record: dict, folders: list[dict], projects: list[dict
                 score += 6
         if version and version.normalized.lower() in lower_path.replace("_", "-"):
             score += 8
+        # Being the current parent is not evidence that it is the best destination.
+        # Otherwise every scanned file scores its own folder highest and the
+        # organizer can never discover a better existing user folder. A small
+        # tie-break bonus is safe only after semantic/project evidence exists.
+        if path == parent and score:
+            score += 3
         if score:
             depth = int(folder.get("depth", 0))
             ranked.append((score, -depth, folder))
