@@ -1,0 +1,6 @@
+{
+  "images": ["jpg", "png", "webp"],
+  "documents": ["pdf", "docx", "txt"],
+  "code": ["py", "js", "cs"],
+  "archives": ["zip", "rar", "7z"]
+}
