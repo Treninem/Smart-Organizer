@@ -1,8 +1,7 @@
 """Stable Windows launcher for Smart Organizer.
 
-The executable produced from this file deliberately runs the external main.py
-located next to SmartOrganizer.exe. Most future runtime modules can therefore
-update from GitHub without replacing the launcher.
+The executable runs external runtime modules next to SmartOrganizer.exe so
+features can update without replacing the launcher every stage.
 """
 from __future__ import annotations
 
@@ -27,8 +26,23 @@ from tkinter import filedialog, messagebox, scrolledtext, ttk  # noqa: F401
 from typing import Callable, Iterable  # noqa: F401
 
 
+def _root() -> Path:
+    return Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+
+
+def _self_test() -> int:
+    import ctypes as _ctypes_test  # noqa: F401
+    import tkinter.scrolledtext as _scrolledtext_test  # noqa: F401
+    import urllib.request as _urllib_test  # noqa: F401
+    print("SmartOrganizer frozen runtime self-test: OK")
+    return 0
+
+
 def main() -> None:
-    root = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent
+    if "--self-test" in sys.argv:
+        raise SystemExit(_self_test())
+
+    root = _root()
     sys.path.insert(0, str(root))
     runtime_entry = root / "main.py"
     if not runtime_entry.exists():
