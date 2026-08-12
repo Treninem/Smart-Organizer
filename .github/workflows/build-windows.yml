@@ -36,7 +36,16 @@ jobs:
           pyinstaller --noconfirm --clean --onefile --windowed
           --name SmartOrganizer
           --icon assets/SmartOrganizer.ico
+          --hidden-import ctypes
+          --hidden-import _ctypes
+          --hidden-import ctypes.wintypes
           bootstrap.py
+
+      - name: Frozen launcher self-test
+        shell: pwsh
+        run: |
+          & "$PWD\dist\SmartOrganizer.exe" --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Frozen launcher self-test failed with exit code $LASTEXITCODE" }
 
       - name: Build Updater.exe
         shell: pwsh
