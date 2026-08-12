@@ -7,9 +7,16 @@ import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from core.launcher_update_runtime import start_launcher_update_check
 from core.paths import app_root
-from core.updater import apply_source_update, fetch_manifest, update_available
+from core.runtime_update import (
+    create_apply_script,
+    download_runtime_bundle,
+    fetch_runtime_manifest,
+    fetch_runtime_release,
+    find_runtime_asset,
+    launch_apply_script,
+    runtime_update_needed,
+)
 
 DEFAULT_UPDATE_INTERVAL_MINUTES = 60
 MIN_UPDATE_INTERVAL_MINUTES = 1
@@ -29,7 +36,12 @@ def _worker_active(app) -> bool:
 
 
 def install_auto_update_runtime(main_window) -> None:
-    """Install periodic source/binary updates and automatic idle restart."""
+    """Install periodic full-runtime updates and automatic idle restart.
+
+    v0.2.7+ updates the complete Windows runtime as one verified ZIP. This keeps
+    SmartOrganizer.exe, its PyInstaller runtime and Python modules in sync and
+    avoids one-file _MEI temporary-directory failures.
+    """
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_auto_update_runtime_installed", False):
         return
@@ -60,25 +72,15 @@ def install_auto_update_runtime(main_window) -> None:
         self._restart_started = True
         root = app_root()
         try:
-            if getattr(sys, "frozen", False):
-                new_exe = root / "SmartOrganizer.new.exe"
-                current_exe = root / "SmartOrganizer.exe"
-                if new_exe.exists():
-                    script = root / ".apply-smart-organizer-update.cmd"
-                    lines = [
-                        "@echo off",
-                        "setlocal",
-                        ":retry",
-                        "timeout /t 1 /nobreak >nul",
-                        f'move /y "{new_exe}" "{current_exe}" >nul 2>&1',
-                        "if errorlevel 1 goto retry",
-                        f'start "" "{current_exe}"',
-                        'del "%~f0"',
-                    ]
-                    script.write_text("\r\n".join(lines) + "\r\n", encoding="ascii")
-                    os.startfile(str(script))
-                else:
-                    subprocess.Popen([sys.executable], cwd=str(root))
+            runtime_zip = getattr(self, "_pending_runtime_zip", None)
+            if getattr(sys, "frozen", False) and runtime_zip:
+                script = create_apply_script(root, runtime_zip, os.getpid())
+                launch_apply_script(script)
+            elif getattr(sys, "frozen", False):
+                env = os.environ.copy()
+                env["PYINSTALLER_RESET_ENVIRONMENT"] = "1"
+                env.pop("_PYI_APPLICATION_HOME_DIR", None)
+                subprocess.Popen([sys.executable], cwd=str(root), env=env)
             else:
                 subprocess.Popen([sys.executable, str(root / "main.py")], cwd=str(root))
             try:
@@ -87,7 +89,7 @@ def install_auto_update_runtime(main_window) -> None:
                 pass
         except Exception as exc:
             self._restart_started = False
-            self.status_var.set(f"Обновление установлено, но автоперезапуск не удался: {exc}")
+            self.status_var.set(f"Обновление готово, но автоперезапуск не удался: {exc}")
             return
 
         try:
@@ -105,26 +107,26 @@ def install_auto_update_runtime(main_window) -> None:
             return
         if _worker_active(self):
             self.status_var.set(
-                "Обновление установлено. Перезапуск будет выполнен автоматически после завершения текущей операции."
+                "Обновление скачано. Перезапуск будет выполнен автоматически после завершения текущей операции."
             )
             self.after(1000, self._restart_when_idle)
             return
-        self.status_var.set("Обновление установлено. Smart Organizer перезапускается автоматически…")
+        self.status_var.set("Обновление готово. Smart Organizer перезапускается автоматически…")
         self.after(250, self._restart_application)
 
     def _finish_update_check(self, result: dict, manual: bool) -> None:
         self._update_thread = None
         if result.get("updated"):
-            version = result.get("version", "?")
-            changed = int(result.get("changed", 0))
-            self.db.log_action("update", str(version), "ok", f"updated={changed}; auto_restart=1")
+            version = str(result.get("version", "?"))
+            self._pending_runtime_zip = result.get("runtime_zip")
+            self.db.log_action("runtime-update", version, "ok", "verified runtime bundle ready; auto_restart=1")
             self._restart_pending = True
-            self.status_var.set(f"Обновление {version} установлено. Подготовка автоматического перезапуска…")
+            self.status_var.set(f"Обновление {version} проверено и скачано. Подготовка автоматического перезапуска…")
             self.after(300, self._restart_when_idle)
             return
 
         if result.get("error"):
-            self.db.log_action("update", None, "error", str(result["error"]))
+            self.db.log_action("runtime-update", None, "error", str(result["error"]))
             if manual:
                 messagebox.showwarning("Обновления", f"Не удалось проверить GitHub:\n{result['error']}")
             self.status_var.set("Не удалось проверить обновления.")
@@ -143,18 +145,23 @@ def install_auto_update_runtime(main_window) -> None:
             self._schedule_next_update(1)
             return
         if manual:
-            self.status_var.set("Проверяю GitHub…")
+            self.status_var.set("Проверяю обновление Smart Organizer…")
 
         def run() -> None:
             result = {"updated": False}
             try:
-                manifest = fetch_manifest()
-                if update_available(main_window.APP_VERSION, manifest):
-                    changed = apply_source_update(app_root(), manifest)
+                root = app_root()
+                manifest = fetch_runtime_manifest()
+                release = fetch_runtime_release()
+                if runtime_update_needed(root, main_window.APP_VERSION, manifest, release):
+                    asset = find_runtime_asset(release)
+                    if not asset:
+                        raise RuntimeError("Готовый Windows runtime-пакет обновления ещё не опубликован")
+                    runtime_zip = download_runtime_bundle(root, asset)
                     result.update(
                         updated=True,
                         version=str(manifest.get("version", "?")),
-                        changed=len(changed),
+                        runtime_zip=runtime_zip,
                     )
             except Exception as exc:
                 result["error"] = str(exc)
@@ -219,8 +226,8 @@ def install_auto_update_runtime(main_window) -> None:
         ttk.Label(
             frame,
             text=(
-                "После установки кода или нового ядра EXE программа сама перезапустится, "
-                "когда не выполняется анализ или другая операция."
+                "Обновляется весь runtime-пакет целиком. После проверки SHA-256 программа сама ждёт окончания работы, "
+                "заменяет runtime и перезапускается. Локальные data/ и logs/ не затрагиваются."
             ),
             wraplength=720,
             justify="left",
@@ -234,15 +241,14 @@ def install_auto_update_runtime(main_window) -> None:
     def __init__(self, *args, **kwargs):
         self._auto_update_after_id = None
         self._update_thread = None
-        self._launcher_update_thread = None
         self._restart_pending = False
         self._restart_started = False
+        self._pending_runtime_zip = None
         original_init(self, *args, **kwargs)
         self.auto_update_enabled = bool(self.db.get_setting("auto_update_enabled", True))
         self.auto_update_interval_minutes = normalize_interval_minutes(
             self.db.get_setting("auto_update_interval_minutes", DEFAULT_UPDATE_INTERVAL_MINUTES)
         )
-        self.after(1500, lambda: start_launcher_update_check(self))
 
     cls.__init__ = __init__
     cls._schedule_next_update = _schedule_next_update
