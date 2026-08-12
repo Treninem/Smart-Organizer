@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Iterable
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS knowledge (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     kind TEXT NOT NULL,
@@ -59,22 +57,27 @@ class Database:
     def __init__(self, path: Path):
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        self._lock = threading.RLock()
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
-        self.conn.executescript(SCHEMA)
+        with self._lock:
+            self.conn.executescript(SCHEMA)
 
     def close(self) -> None:
-        self.conn.close()
+        with self._lock:
+            self.conn.close()
 
     def set_setting(self, key: str, value: object) -> None:
-        self.conn.execute(
-            "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-            (key, json.dumps(value, ensure_ascii=False)),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (key, json.dumps(value, ensure_ascii=False)),
+            )
+            self.conn.commit()
 
     def get_setting(self, key: str, default=None):
-        row = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        with self._lock:
+            row = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         if not row:
             return default
         try:
@@ -83,21 +86,21 @@ class Database:
             return row["value"]
 
     def seed_knowledge(self, items: Iterable[dict]) -> None:
-        for item in items:
-            self.conn.execute(
-                """INSERT INTO knowledge(kind,name,payload) VALUES(?,?,?)
-                   ON CONFLICT(kind,name) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP""",
-                (item["kind"], item["name"], json.dumps(item, ensure_ascii=False)),
-            )
-        self.conn.commit()
+        with self._lock:
+            for item in items:
+                self.conn.execute(
+                    """INSERT INTO knowledge(kind,name,payload) VALUES(?,?,?)
+                       ON CONFLICT(kind,name) DO UPDATE SET payload=excluded.payload, updated_at=CURRENT_TIMESTAMP""",
+                    (item["kind"], item["name"], json.dumps(item, ensure_ascii=False)),
+                )
+            self.conn.commit()
 
     def replace_scan(self, folders: list[dict], files: list[dict]) -> None:
-        with self.conn:
+        with self._lock, self.conn:
             self.conn.execute("DELETE FROM folder_snapshot")
             self.conn.execute("DELETE FROM file_snapshot")
             self.conn.executemany(
-                "INSERT OR REPLACE INTO folder_snapshot(path,parent,name,depth) VALUES(:path,:parent,:name,:depth)",
-                folders,
+                "INSERT OR REPLACE INTO folder_snapshot(path,parent,name,depth) VALUES(:path,:parent,:name,:depth)", folders
             )
             self.conn.executemany(
                 """INSERT OR REPLACE INTO file_snapshot
@@ -106,25 +109,41 @@ class Database:
                 files,
             )
 
+    def snapshot_files(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT path,parent,name,extension,size,modified,category,project_hint FROM file_snapshot ORDER BY path"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def snapshot_folders(self) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute("SELECT path,parent,name,depth FROM folder_snapshot ORDER BY depth,path").fetchall()
+        return [dict(row) for row in rows]
+
     def log_action(self, action: str, target: str | None, result: str, details: str = "") -> None:
-        self.conn.execute(
-            "INSERT INTO actions(action,target,result,details) VALUES(?,?,?,?)",
-            (action, target, result, details),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("INSERT INTO actions(action,target,result,details) VALUES(?,?,?,?)", (action, target, result, details))
+            self.conn.commit()
+
+    def latest_actions(self, limit: int = 20) -> list[dict]:
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT action,target,result,details,created_at FROM actions ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def counts(self) -> dict[str, int]:
-        return {
-            "folders": self.conn.execute("SELECT COUNT(*) FROM folder_snapshot").fetchone()[0],
-            "files": self.conn.execute("SELECT COUNT(*) FROM file_snapshot").fetchone()[0],
-            "knowledge": self.conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0],
-            "decisions": self.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0],
-        }
+        with self._lock:
+            return {
+                "folders": self.conn.execute("SELECT COUNT(*) FROM folder_snapshot").fetchone()[0],
+                "files": self.conn.execute("SELECT COUNT(*) FROM file_snapshot").fetchone()[0],
+                "knowledge": self.conn.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0],
+                "decisions": self.conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0],
+            }
 
 
 class KnowledgeDatabase:
-    """Compatibility wrapper for the repository's original knowledge API."""
-
     def __init__(self, root="D:/Smart-Organizer/data"):
         root_path = Path(root)
         self.root = root_path
@@ -144,7 +163,10 @@ class KnowledgeDatabase:
         if self._db is None:
             self.initialize()
         assert self._db is not None
-        row = self._db.conn.execute("SELECT payload FROM knowledge WHERE name=? ORDER BY id DESC LIMIT 1", (key,)).fetchone()
+        with self._db._lock:
+            row = self._db.conn.execute(
+                "SELECT payload FROM knowledge WHERE name=? ORDER BY id DESC LIMIT 1", (key,)
+            ).fetchone()
         if not row:
             return None
         try:

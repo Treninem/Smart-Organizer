@@ -6,7 +6,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $SourceDir = Split-Path -Parent $PSScriptRoot
 
-Write-Host 'Smart Organizer v0.1.0 installer' -ForegroundColor Cyan
+Write-Host 'Smart Organizer v0.2.0 installer' -ForegroundColor Cyan
 
 if (-not (Test-Path -LiteralPath 'D:\')) {
     Write-Host 'Drive D: was not found. Using Documents\Smart-Organizer.' -ForegroundColor Yellow
