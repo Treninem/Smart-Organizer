@@ -3,14 +3,14 @@
   "channel": "stable",
   "files": [
     {"path":"main.py","sha256":"2653e28aba651b85cfa585d8e4718d884ca7ee9eaf90d1c0d4993975d6497a0c"},
-    {"path":"app/main_window.py","sha256":"1f10bf830e4012481df011cb34c7cde537447b95c75df2b9af0df5c0ae16a96e"},
+    {"path":"app/main_window.py","sha256":"a28b626b39886e8c529a87a917983ff4b34add60e657a9c2f55e398b0058bdb8"},
     {"path":"core/paths.py","sha256":"7f8d23d3f4b5075c3dbe7db04ba319c6abd6dadf32fdb70cc6840c10c31f0fcd"},
-    {"path":"core/database.py","sha256":"17c9d3928fd29e70344371746749fc3ee05104a47183de92f26b7954120efb4a"},
+    {"path":"core/database.py","sha256":"213b6d0280ae9b5515417ef0c33ad60284f2b4b418eb7e170b4512c9714f63ca"},
     {"path":"core/classifier.py","sha256":"5fe5a3ab4db27050cdbd226d32beea442d23cba6c2cdaf1529cf2a8414062456"},
     {"path":"core/scanner.py","sha256":"f20e7d4a9454617b807dcad0ca98487d5bfa6faab8664d5902011671ddb51e84"},
     {"path":"core/knowledge.py","sha256":"9bef1461b30710cbbf5e5ce2099bef2993b0c9512b18bbfe0550faa6011f9c68"},
     {"path":"core/updater.py","sha256":"07e2bae76b422b37c27f048367da4177a6ffcbb2f621a4b6ed2cd378a5b66670"},
-    {"path":"config/initial_knowledge.json","sha256":"145430b811814565aa0ec73bd7827d992bdf96d8fc8fd96076e2af8539dfe7db"},
+    {"path":"config/initial_knowledge.json","sha256":"94dfdaac3aa069e5b2d888801bce3e044edfb94bd7030a710d1c3e15f6ae2c59"},
     {"path":"config/settings.default.json","sha256":"f66f094fc90679578bccb52adf2326baf7f09e53cf2b31b51296a990104d8550"},
     {"path":"version.json","sha256":"d4f9a18ebe9106e5965bf285f68cd5011e6fee9e15ee8afdd82a2a61d2bcae66"}
   ],
