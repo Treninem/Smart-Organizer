@@ -145,6 +145,18 @@ def _schedule_launcher_update(asset: dict) -> bool:
         return False
 
 
+def _install_real_windows_folder_resolver(main_window) -> None:
+    """Make UI shortcuts use actual Windows Known Folder locations."""
+    from core.windows_paths import desktop_path
+
+    def scan_desktop(self) -> None:
+        desktop = desktop_path()
+        self.status_var.set(f"Рабочий стол Windows: {desktop}")
+        self.start_scan(desktop)
+
+    main_window.SmartOrganizerApp.scan_desktop = scan_desktop
+
+
 def main() -> None:
     current_version = _prelaunch_update()
 
@@ -157,6 +169,7 @@ def main() -> None:
     import app.main_window as main_window
 
     main_window.APP_VERSION = current_version
+    _install_real_windows_folder_resolver(main_window)
     app = main_window.SmartOrganizerApp()
     app.mainloop()
 
