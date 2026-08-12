@@ -47,10 +47,12 @@ def main() -> None:
 
     import app.main_window as main_window
     from core.auto_update_runtime import install_auto_update_runtime
+    from core.ui_runtime import install_ui_runtime
 
     main_window.APP_VERSION = current_version
     _install_real_windows_folder_resolver(main_window)
     install_auto_update_runtime(main_window)
+    install_ui_runtime(main_window)
 
     app = main_window.SmartOrganizerApp()
     app.mainloop()
