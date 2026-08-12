@@ -16,7 +16,7 @@ class SortPlannerTests(unittest.TestCase):
             {"path": r"D:\Inbox", "name": "Inbox", "depth": 1},
             {"path": r"D:\Images", "name": "Images", "depth": 1},
         ]
-        result = build_sort_plan(files, folders, [], r"D:\")
+        result = build_sort_plan(files, folders, [], "D:\\")
         self.assertTrue(result["safe_mode"])
         self.assertEqual(result["summary"]["filesystem_changes_performed"], 0)
         self.assertEqual(len(result["items"]), 1)
@@ -47,7 +47,7 @@ class SortPlannerTests(unittest.TestCase):
             "project_hint": None,
         }]
         folders = [{"path": r"D:\Images", "name": "Images", "depth": 1}]
-        result = build_sort_plan(files, folders, [], r"D:\")
+        result = build_sort_plan(files, folders, [], "D:\\")
         self.assertEqual(result["items"], [])
         self.assertEqual(result["summary"]["already_placed"], 1)
 
