@@ -50,6 +50,21 @@ CREATE TABLE IF NOT EXISTS actions (
     details TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS operation_journal (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    op_type TEXT NOT NULL,
+    source TEXT NOT NULL,
+    target TEXT,
+    status TEXT NOT NULL DEFAULT 'planned',
+    details TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(batch_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_operation_journal_batch ON operation_journal(batch_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_operation_journal_status ON operation_journal(status, id);
 """
 
 
@@ -132,6 +147,58 @@ class Database:
                 "SELECT action,target,result,details,created_at FROM actions ORDER BY id DESC LIMIT ?", (limit,)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def add_operation_batch(self, rows: list[dict]) -> None:
+        """Persist a planned batch without performing filesystem changes."""
+        if not rows:
+            return
+        with self._lock, self.conn:
+            self.conn.executemany(
+                """INSERT INTO operation_journal
+                   (batch_id,sequence,op_type,source,target,status,details)
+                   VALUES(:batch_id,:sequence,:op_type,:source,:target,:status,:details)""",
+                rows,
+            )
+
+    def operation_entries(self, batch_id: str | None = None, limit: int = 100) -> list[dict]:
+        limit = max(1, min(int(limit), 5000))
+        with self._lock:
+            if batch_id:
+                rows = self.conn.execute(
+                    """SELECT id,batch_id,sequence,op_type,source,target,status,details,created_at,updated_at
+                       FROM operation_journal WHERE batch_id=? ORDER BY sequence ASC LIMIT ?""",
+                    (batch_id, limit),
+                ).fetchall()
+            else:
+                rows = self.conn.execute(
+                    """SELECT id,batch_id,sequence,op_type,source,target,status,details,created_at,updated_at
+                       FROM operation_journal ORDER BY id DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+        result: list[dict] = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["details"] = json.loads(item.get("details") or "{}")
+            except json.JSONDecodeError:
+                item["details"] = {"raw": item.get("details")}
+            result.append(item)
+        return result
+
+    def set_operation_status(self, entry_id: int, status: str, details: dict | None = None) -> None:
+        if status not in {"planned", "applied", "failed", "undone"}:
+            raise ValueError(f"Unsupported operation status: {status}")
+        payload = json.dumps(details or {}, ensure_ascii=False)
+        with self._lock:
+            cursor = self.conn.execute(
+                """UPDATE operation_journal
+                   SET status=?, details=?, updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (status, payload, int(entry_id)),
+            )
+            if cursor.rowcount != 1:
+                self.conn.rollback()
+                raise KeyError(f"Operation journal entry not found: {entry_id}")
+            self.conn.commit()
 
     def counts(self) -> dict[str, int]:
         with self._lock:
