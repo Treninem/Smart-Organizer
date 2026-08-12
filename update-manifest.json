@@ -2,14 +2,14 @@
   "version": "0.2.0",
   "channel": "stable",
   "files": [
-    {"path": "app/main_window.py"},
-    {"path": "core/database.py"},
-    {"path": "core/version_manager.py"},
-    {"path": "core/duplicates.py"},
-    {"path": "core/project_manager.py"},
-    {"path": "core/archive_analyzer.py"},
-    {"path": "core/system_monitor.py"},
-    {"path": "version.json"}
+    {"path": "app/main_window.py", "sha256": "2806008fe40af258616e2d080e893bce7460517fd965ab79ff8f34a552ea7997"},
+    {"path": "core/database.py", "sha256": "4010bb8af65c42a0a984253f7596dd0152708232992a2eed388414dccfc09ddf"},
+    {"path": "core/version_manager.py", "sha256": "a35c375b49c81f2b959c107acaf2d0308e3134977b4238dd412251d1a6f8f330"},
+    {"path": "core/duplicates.py", "sha256": "6f9262ccb4caaac3e9d04996766a7fa5896f92934f040fdf244878e426daa548"},
+    {"path": "core/project_manager.py", "sha256": "cdb6e9071df251a65903905da067c58a831200bbc26400a950484646aba92165"},
+    {"path": "core/archive_analyzer.py", "sha256": "88d4fa307a4143625a8a4c07ec673e9fba5ad415517e29ed4bbb9ab5c5628923"},
+    {"path": "core/system_monitor.py", "sha256": "46b3e3afd710c8defd85be9c6380b12267fe6a3498d4cbe0cf7f8f738e1d92b6"},
+    {"path": "version.json", "sha256": "cd07c93a09985b62fc06295d4ee383b52ae79f167b1f8b29a7a161aa68fc7d4e"}
   ],
   "preserve": ["data/", "logs/"]
 }
