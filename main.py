@@ -59,8 +59,6 @@ def _run_app_self_test(app) -> None:
 
 
 def main() -> None:
-    # Startup must never wait for the internet and must remain repairable even
-    # when an old frozen launcher is temporarily missing a newer stdlib module.
     current_version = _local_version()
     _install_tkinter_compat()
 
@@ -105,14 +103,22 @@ def main() -> None:
     except Exception as exc:
         startup_warnings.append(f"дополнительный анализ: {exc}")
 
-    # Final UI layer deliberately replaces the button-heavy experimental file
-    # screen with one stable workflow: scan -> review -> apply -> undo.
     try:
         from core.stable_workflow_runtime import install_stable_workflow_runtime
 
         install_stable_workflow_runtime(main_window)
     except Exception as exc:
         startup_warnings.append(f"стабильный сценарий: {exc}")
+
+    # The final organization layer is intentionally the most conservative one:
+    # it learns the user's real placement and executes only confident moves to
+    # already existing folders. Low-confidence guesses remain preview-only.
+    try:
+        from core.safe_layout_runtime import install_safe_layout_runtime
+
+        install_safe_layout_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"защита пользовательской компоновки: {exc}")
 
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
