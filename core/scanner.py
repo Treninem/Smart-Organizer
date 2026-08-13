@@ -7,9 +7,14 @@ from typing import Callable
 
 from .classifier import category_for, project_hint
 
-DEFAULT_EXCLUDED = {
-    "$recycle.bin", "system volume information", "windows", "program files",
-    "program files (x86)", "programdata", ".git", "node_modules", "__pycache__",
+ALWAYS_EXCLUDED = {".git", "node_modules", "__pycache__"}
+SYSTEM_ROOT_EXCLUDED = {
+    "$recycle.bin",
+    "system volume information",
+    "windows",
+    "program files",
+    "program files (x86)",
+    "programdata",
 }
 
 
@@ -29,6 +34,26 @@ class ScanResult:
             "errors": len(self.errors),
             "bytes": self.bytes_total,
         }
+
+
+def _is_volume_root(path: Path) -> bool:
+    anchor = path.anchor
+    return bool(anchor) and path == Path(anchor)
+
+
+def _filter_dirs(current_path: Path, root: Path, names: list[str]) -> list[str]:
+    excluded = set(ALWAYS_EXCLUDED)
+    # OS directories are dangerous/noisy only when the user deliberately scans
+    # an entire volume. A normal project is allowed to contain a legitimate
+    # folder called "Windows" or "ProgramData" and it must not disappear from
+    # Smart Organizer's snapshot.
+    if current_path == root and _is_volume_root(root):
+        excluded.update(SYSTEM_ROOT_EXCLUDED)
+    return [
+        name
+        for name in names
+        if name.lower() not in excluded and not Path(current_path, name).is_symlink()
+    ]
 
 
 def scan_tree(
@@ -51,7 +76,7 @@ def scan_tree(
 
     for current, dirs, files in os.walk(root, topdown=True, onerror=onerror, followlinks=False):
         current_path = Path(current)
-        dirs[:] = [d for d in dirs if d.lower() not in DEFAULT_EXCLUDED and not Path(current_path, d).is_symlink()]
+        dirs[:] = _filter_dirs(current_path, root, dirs)
         try:
             depth = len(current_path.relative_to(root).parts)
         except ValueError:
