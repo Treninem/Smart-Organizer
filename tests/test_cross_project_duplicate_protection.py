@@ -2,8 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from core.database import Database
 from core.duplicate_insights import duplicate_candidate_groups
 from core.duplicates import exact_duplicate_groups
+from core.operation_executor import OperationExecutionError, execute_batch
+from core.operation_journal import OperationJournal, ReversibleOperation
 
 
 class CrossProjectDuplicateProtectionTests(unittest.TestCase):
@@ -45,8 +48,6 @@ class CrossProjectDuplicateProtectionTests(unittest.TestCase):
             a.write_bytes(b'{"enabled":true}')
             b.write_bytes(b'{"enabled":true}')
 
-            # Even without a recognized project hint, sibling project trees are
-            # separate safety scopes under the scanned root.
             records = [self._record(a), self._record(b)]
             self.assertEqual([], exact_duplicate_groups(records, str(root)))
 
@@ -82,6 +83,39 @@ class CrossProjectDuplicateProtectionTests(unittest.TestCase):
             self.assertEqual(1, len(groups))
             self.assertEqual(str(a), groups[0]["canonical"])
             self.assertEqual([str(b)], groups[0]["duplicates"])
+
+    def test_old_quarantine_plan_cannot_move_identical_file_from_another_project(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project_a = root / "Project-A"
+            project_b = root / "Project-B"
+            quarantine = root / "quarantine"
+            project_a.mkdir()
+            project_b.mkdir()
+            quarantine.mkdir()
+            canonical = project_a / "main.py"
+            source = project_b / "main.py"
+            canonical.write_bytes(b"same")
+            source.write_bytes(b"same")
+
+            db = Database(root / "knowledge.db")
+            journal = OperationJournal(db)
+            batch = journal.plan_batch([
+                ReversibleOperation(
+                    "delete-to-quarantine",
+                    str(source),
+                    str(quarantine / "main.py"),
+                    f"exact SHA-256 duplicate of {canonical}",
+                )
+            ])
+            try:
+                with self.assertRaises(OperationExecutionError):
+                    execute_batch(journal, batch)
+                self.assertTrue(source.exists())
+                self.assertTrue(canonical.exists())
+                self.assertFalse((quarantine / "main.py").exists())
+            finally:
+                db.close()
 
 
 if __name__ == "__main__":
