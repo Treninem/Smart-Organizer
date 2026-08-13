@@ -40,6 +40,7 @@ jobs:
           --hidden-import ctypes
           --hidden-import _ctypes
           --hidden-import ctypes.wintypes
+          --hidden-import uuid
           bootstrap.py
 
       - name: Frozen runtime self-test
@@ -97,6 +98,8 @@ jobs:
           if (-not (Test-Path (Join-Path $testDir 'logs'))) { throw 'logs directory missing after install test' }
           $process = Start-Process -FilePath (Join-Path $testDir 'SmartOrganizer.exe') -ArgumentList '--self-test' -Wait -PassThru -WorkingDirectory $testDir
           if ($process.ExitCode -ne 0) { throw "Installed runtime self-test failed with exit code $($process.ExitCode)" }
+          $gui = Start-Process -FilePath (Join-Path $testDir 'SmartOrganizer.exe') -ArgumentList '--app-self-test' -Wait -PassThru -WorkingDirectory $testDir
+          if ($gui.ExitCode -ne 0) { throw "Installed GUI startup self-test failed with exit code $($gui.ExitCode)" }
 
       - name: Publish atomic runtime update
         shell: pwsh
