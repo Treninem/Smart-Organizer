@@ -15,7 +15,6 @@ def _local_version() -> str:
 
 
 def _install_tkinter_compat() -> None:
-    """Keep older frozen launchers compatible with newer UI modules."""
     try:
         import tkinter.scrolledtext  # noqa: F401
         return
@@ -28,7 +27,6 @@ def _install_tkinter_compat() -> None:
 
 
 def _install_real_windows_folder_resolver(main_window) -> None:
-    """Make UI shortcuts use actual Windows Known Folder locations."""
     from core.windows_paths import desktop_path
 
     def scan_desktop(self) -> None:
@@ -40,7 +38,6 @@ def _install_real_windows_folder_resolver(main_window) -> None:
 
 
 def _run_app_self_test(app) -> None:
-    """Construct every major screen without entering the interactive event loop."""
     screens = [
         app.show_home,
         app.show_files,
@@ -68,57 +65,22 @@ def main() -> None:
     _install_real_windows_folder_resolver(main_window)
     startup_warnings: list[str] = []
 
-    try:
-        from core.auto_update_runtime import install_auto_update_runtime
-
-        install_auto_update_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"автообновление runtime: {exc}")
-
-    try:
-        from core.modern_ui_runtime import install_modern_ui_runtime
-
-        install_modern_ui_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"современный интерфейс: {exc}")
-
-    try:
-        from core.ui_runtime import install_ui_runtime
-
-        install_ui_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"расширения интерфейса: {exc}")
-
-    try:
-        from core.diagnostics_ui_runtime import install_diagnostics_ui_runtime
-
-        install_diagnostics_ui_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"диагностика: {exc}")
-
-    try:
-        from core.full_features_runtime import install_full_features_runtime
-
-        install_full_features_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"дополнительный анализ: {exc}")
-
-    try:
-        from core.stable_workflow_runtime import install_stable_workflow_runtime
-
-        install_stable_workflow_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"стабильный сценарий: {exc}")
-
-    # The final organization layer is intentionally the most conservative one:
-    # it learns the user's real placement and executes only confident moves to
-    # already existing folders. Low-confidence guesses remain preview-only.
-    try:
-        from core.safe_layout_runtime import install_safe_layout_runtime
-
-        install_safe_layout_runtime(main_window)
-    except Exception as exc:
-        startup_warnings.append(f"защита пользовательской компоновки: {exc}")
+    installers = [
+        ("core.auto_update_runtime", "install_auto_update_runtime", "автообновление runtime"),
+        ("core.modern_ui_runtime", "install_modern_ui_runtime", "современный интерфейс"),
+        ("core.ui_runtime", "install_ui_runtime", "расширения интерфейса"),
+        ("core.diagnostics_ui_runtime", "install_diagnostics_ui_runtime", "диагностика"),
+        ("core.full_features_runtime", "install_full_features_runtime", "дополнительный анализ"),
+        ("core.stable_workflow_runtime", "install_stable_workflow_runtime", "стабильный сценарий"),
+        ("core.safe_layout_runtime", "install_safe_layout_runtime", "защита пользовательской компоновки"),
+        ("core.maximum_safety_runtime", "install_maximum_safety_runtime", "усиленная компоновка"),
+    ]
+    for module_name, function_name, label in installers:
+        try:
+            module = __import__(module_name, fromlist=[function_name])
+            getattr(module, function_name)(main_window)
+        except Exception as exc:
+            startup_warnings.append(f"{label}: {exc}")
 
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
