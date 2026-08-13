@@ -25,7 +25,9 @@ class EndToEndOrganizerTests(unittest.TestCase):
             scan = scan_tree(root, [])
             plan = build_sort_plan(scan.files, scan.folders, [], str(root))
             self.assertEqual(1, plan["summary"]["moves_suggested"])
-            self.assertEqual(str(images / "holiday.jpg"), plan["items"][0]["target_path"])
+            target = Path(plan["items"][0]["target_path"])
+            self.assertEqual("holiday.jpg", target.name)
+            self.assertTrue(target.parent.samefile(images))
 
             operations = operations_from_confirmed_sort_plan(plan)
             db = Database(root / "knowledge.db")
