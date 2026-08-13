@@ -77,6 +77,12 @@ def rank_existing_folders(
     source_scope = _structural_scope(record, scan_root)
     ranked: list[tuple[int, int, dict]] = []
 
+    # Existing project internals are intentionally frozen. Smart Organizer is
+    # meant to route loose/new files into the user's structure, not rewrite a
+    # working project because another folder happens to be called src/app/docs.
+    if source_scope is not None:
+        return [{"path": parent, "score": 100, "reason": "preserve_existing_project_tree"}]
+
     aliases: set[str] = set()
     keywords: set[str] = set()
     if project:
@@ -88,25 +94,18 @@ def rank_existing_folders(
         name = folder.get("name", "")
         lower_path = path.lower()
         lower_name = name.lower()
-
-        within_source_scope = bool(source_scope and _is_within(path, source_scope))
-        project_evidence = False
-        if project:
-            project_evidence = any(alias and alias in lower_path for alias in aliases)
-            project_evidence = project_evidence or any(kw and kw in lower_path for kw in keywords)
-            if source_scope and not within_source_scope and not project_evidence:
-                continue
-        elif source_scope and not within_source_scope:
-            continue
-
         score = 0
+
         if project:
             for alias in aliases:
                 if alias and alias in lower_path:
                     score += 14
             score += min(8, sum(2 for kw in keywords if kw in lower_path))
-        if within_source_scope:
-            score += 10
+            # A generic src/app/docs folder in an unrelated project must never
+            # win only because of its common folder name.
+            if score == 0:
+                continue
+
         for word in CATEGORY_FOLDER_WORDS.get(category, ()):
             if word in lower_name:
                 score += 6
@@ -129,16 +128,13 @@ def suggest_destination(record: dict, folders: list[dict], projects: list[dict],
 
     project_name = record.get("project_hint") or project_hint(Path(record.get("path", "")), projects)
     project = next((p for p in projects if p.get("name") == project_name), None)
-    source_scope = _structural_scope(record, scan_root)
-    base = source_scope or Path(scan_root or record.get("parent") or ".")
+    base = Path(scan_root or record.get("parent") or ".")
+    category = str(record.get("category") or "Прочее")
     if project:
-        if source_scope:
-            proposed = base / "Smart-Organizer_Sorted" / (record.get("category") or "Other")
-        else:
-            root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
-            proposed = base / root_hint / project["name"]
+        root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
+        proposed = base / root_hint / project["name"] / category
     else:
-        proposed = base / "Smart-Organizer_Unsorted"
+        proposed = base / "Smart-Organizer_Unsorted" / category
     return {"mode": "proposed", "path": str(proposed), "score": 0, "reason": "no_existing_match_create_only_after_confirmation"}
 
 
