@@ -184,8 +184,6 @@ def execute_batch(journal, batch_id: str) -> dict:
     ]
     validate_no_destructive_conflicts(operations)
 
-    # Preflight every operation before the first mutation. A target parent may
-    # be a directory explicitly planned earlier in the same reviewed batch.
     created_dirs: set[str] = set()
     for row, operation in zip(planned, operations):
         try:
@@ -201,8 +199,6 @@ def execute_batch(journal, batch_id: str) -> dict:
             journal.mark_applied(int(row["id"]), details)
             applied += 1
         except Exception as exc:
-            # A race can still happen after preflight (for example another
-            # process creates a target). Preserve exact progress for Undo.
             journal.mark_failed(int(row["id"]), str(exc))
             raise OperationExecutionError(
                 f"Batch {batch_id} stopped after {applied} applied operation(s): {exc}"
@@ -219,9 +215,9 @@ def undo_batch(journal, batch_id: str) -> dict:
     if not applied:
         raise OperationExecutionError(f"No applied operations to undo in batch: {batch_id}")
 
-    # Build all inverse operations first. Files scheduled to move out of a
-    # batch-created directory count as planned removals when deciding whether
-    # that directory will be empty. Any unrelated user file still blocks Undo.
+    # Build all inverse operations first. Files and folders scheduled to leave a
+    # batch-created directory count as planned removals. Any unrelated user file
+    # still blocks Undo.
     inverse_rows: list[tuple[dict, ReversibleOperation | None]] = []
     planned_vacated_paths: set[str] = set()
     reversed_rows = list(reversed(applied))
@@ -257,6 +253,9 @@ def undo_batch(journal, batch_id: str) -> dict:
                 raise OperationExecutionError(
                     f"Refusing to remove directory with user/untracked content during undo: {path}"
                 )
+            # Parent folders processed later in reverse order may contain this
+            # directory now, but it is itself scheduled for removal first.
+            planned_vacated_paths.add(_normalized_path(path))
             inverse_rows.append((row, None))
         else:
             raise OperationExecutionError(f"Unsupported journal operation during undo: {op_type}")
