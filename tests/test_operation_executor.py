@@ -119,6 +119,26 @@ class OperationExecutorTests(unittest.TestCase):
         self.assertTrue(source.exists())
         self.assertFalse(target.parent.exists())
 
+    def test_reviewed_batch_can_create_quarantine_then_move_and_undo(self):
+        source = self.root / "duplicate.bin"
+        source.write_bytes(b"same-content")
+        quarantine = self.root / "quarantine"
+        target = quarantine / "duplicate.bin"
+        batch_id = self.journal.plan_batch([
+            ReversibleOperation("mkdir", str(quarantine), None, "confirmed quarantine folder"),
+            ReversibleOperation("delete-to-quarantine", str(source), str(target), "confirmed exact duplicate"),
+        ])
+
+        result = execute_batch(self.journal, batch_id)
+        self.assertEqual(2, result["applied"])
+        self.assertFalse(source.exists())
+        self.assertTrue(target.exists())
+
+        result = undo_batch(self.journal, batch_id)
+        self.assertEqual(2, result["undone"])
+        self.assertTrue(source.exists())
+        self.assertFalse(quarantine.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
