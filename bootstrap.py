@@ -44,6 +44,7 @@ def _self_test(root: Path) -> int:
         from core import duplicate_insights as _duplicate_insights_test  # noqa: F401
         from core import folder_tree as _folder_tree_test  # noqa: F401
         from core import full_features_runtime as _full_features_test  # noqa: F401
+        from core import layout_memory as _layout_memory_test  # noqa: F401
         from core import local_ai as _local_ai_test  # noqa: F401
         from core import modern_ui_runtime as _modern_ui_test  # noqa: F401
         from core import operation_executor as _operation_executor_test  # noqa: F401
