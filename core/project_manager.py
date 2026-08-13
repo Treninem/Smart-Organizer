@@ -38,7 +38,6 @@ def _norm(path: str | Path) -> str:
 
 
 def _structural_scope(record: dict, scan_root: str | None) -> Path | None:
-    """Return a conservative project-tree boundary for already nested files."""
     if not scan_root:
         return None
     source = Path(str(record.get("path") or ""))
@@ -71,14 +70,11 @@ def rank_existing_folders(
     source_scope = _structural_scope(record, scan_root)
     all_files = all_files or []
 
-    # Existing project internals are frozen. Smart Organizer routes loose/new
-    # files; it does not reorganize a working project from the inside.
     if source_scope is not None:
-        return [{"path": parent, "score": 1000, "reason": "preserve_existing_project_tree"}]
+        return [{"path": parent, "score": 1000, "reason": "preserve_existing_project_tree", "evidence": ["файл уже находится внутри пользовательского проектного дерева"]}]
 
     ranked: list[tuple[int, int, dict]] = []
 
-    # First and strongest signal: how the user actually uses folders now.
     learned = best_user_layout_folder(record, folders, all_files, scan_root)
     if learned:
         learned_folder = next((folder for folder in folders if _norm(folder.get("path", "")) == _norm(learned["path"])), None)
@@ -105,38 +101,42 @@ def rank_existing_folders(
         lower_name = name.lower()
         depth = int(folder.get("depth", 0))
         score = 0
+        evidence: list[str] = []
 
         if project:
-            # Recognized project files may go only into an explicitly matching
-            # project tree. Generic words such as bot/app/src are not enough.
             alias_match = any(alias and alias in lower_path for alias in aliases)
             if not alias_match:
                 continue
             score += 40
-            score += min(10, sum(2 for kw in keywords if kw in lower_path))
+            evidence.append(f"путь явно относится к проекту {project_name}")
+            keyword_hits = sum(1 for kw in keywords if kw in lower_path)
+            score += min(10, keyword_hits * 2)
         else:
-            # Unknown loose files may use only shallow user folders. Nested
-            # folders are often project internals and are never guessed into.
             if depth > 1:
                 continue
 
-        # Folder names are only a weak hint now. Actual user contents above are
-        # deliberately much stronger so the program follows the user's layout.
-        for word in CATEGORY_FOLDER_WORDS.get(category, ()):
+        category_words = CATEGORY_FOLDER_WORDS.get(category, ())
+        for word in category_words:
+            if lower_name == word:
+                score += 16
+                evidence.append(f"папка явно называется как категория {category}")
+                break
             if word in lower_name:
-                score += 4
+                score += 6
+                evidence.append(f"название папки похоже на категорию {category}")
+                break
+
         if version and version.normalized.lower() in lower_path.replace("_", "-"):
             score += 6
+            evidence.append(f"папка содержит версию {version.normalized}")
 
-        # Never move merely because a generic folder name matched. Require a
-        # meaningful project match or let the learned-layout scorer decide.
         minimum = 30 if project else 12
         if score >= minimum:
             ranked.append((score, -depth, {
                 "path": path,
                 "score": score,
                 "reason": "existing_user_structure_name_hint",
-                "evidence": ["совпадение с существующей структурой"] if score else [],
+                "evidence": evidence,
             }))
 
     ranked.sort(key=lambda item: (item[0], item[1], item[2]["path"].casefold()), reverse=True)
@@ -176,9 +176,6 @@ def suggest_destination(
     base = Path(scan_root or record.get("parent") or ".")
     category = str(record.get("category") or "Прочее")
 
-    # If no existing placement pattern is convincing, do not pretend to know
-    # where the file belongs. A new-folder suggestion is low confidence and can
-    # only become executable after explicit confirmation.
     if project:
         root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
         proposed = base / root_hint / project["name"] / category
@@ -189,7 +186,7 @@ def suggest_destination(
         "path": str(proposed),
         "score": 0,
         "reason": "no_confident_user_layout_match_create_only_after_confirmation",
-        "evidence": [],
+        "evidence": ["программа не нашла достаточно надёжного совпадения с вашей существующей компоновкой"],
     }
 
 
