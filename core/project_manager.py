@@ -36,14 +36,6 @@ def _norm(path: str | Path) -> str:
     return os.path.normcase(os.path.normpath(str(path)))
 
 
-def _is_within(path: str | Path, root: str | Path) -> bool:
-    try:
-        Path(path).resolve().relative_to(Path(root).resolve())
-        return True
-    except (ValueError, OSError):
-        return False
-
-
 def _structural_scope(record: dict, scan_root: str | None) -> Path | None:
     """Return a conservative project-tree boundary for already nested files."""
     if not scan_root:
@@ -78,7 +70,7 @@ def rank_existing_folders(
     ranked: list[tuple[int, int, dict]] = []
 
     # Existing project internals are intentionally frozen. Smart Organizer is
-    # meant to route loose/new files into the user's structure, not rewrite a
+    # for routing loose/new files into the user's structure, not rewriting a
     # working project because another folder happens to be called src/app/docs.
     if source_scope is not None:
         return [{"path": parent, "score": 100, "reason": "preserve_existing_project_tree"}]
@@ -94,16 +86,23 @@ def rank_existing_folders(
         name = folder.get("name", "")
         lower_path = path.lower()
         lower_name = name.lower()
+        depth = int(folder.get("depth", 0))
         score = 0
 
         if project:
-            for alias in aliases:
-                if alias and alias in lower_path:
-                    score += 14
+            # For a recognized project, destination identity must be explicit:
+            # a project name/alias in the folder path is required. Generic
+            # keywords such as bot/app/src are not enough to cross project trees.
+            alias_match = any(alias and alias in lower_path for alias in aliases)
+            if not alias_match:
+                continue
+            score += 14
             score += min(8, sum(2 for kw in keywords if kw in lower_path))
-            # A generic src/app/docs folder in an unrelated project must never
-            # win only because of its common folder name.
-            if score == 0:
+        else:
+            # Unknown loose files may use only root-level user category folders.
+            # This prevents a random Desktop image from being moved into
+            # Project-B/images just because that generic folder exists.
+            if depth > 1:
                 continue
 
         for word in CATEGORY_FOLDER_WORDS.get(category, ()):
@@ -114,7 +113,6 @@ def rank_existing_folders(
         if _norm(path) == _norm(parent) and score:
             score += 3
         if score:
-            depth = int(folder.get("depth", 0))
             ranked.append((score, -depth, folder))
 
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
