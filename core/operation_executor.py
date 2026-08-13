@@ -169,28 +169,44 @@ def undo_batch(journal, batch_id: str) -> dict:
     if not applied:
         raise OperationExecutionError(f"No applied operations to undo in batch: {batch_id}")
 
-    # Preflight inverse moves before changing anything where practical.
+    # Build all inverse operations first. Files scheduled to move out of a
+    # batch-created directory count as planned removals when deciding whether
+    # that directory will be empty. Any unrelated user file still blocks Undo.
     inverse_rows: list[tuple[dict, ReversibleOperation | None]] = []
-    for row in reversed(applied):
+    planned_vacated_paths: set[str] = set()
+    reversed_rows = list(reversed(applied))
+
+    for row in reversed_rows:
         op_type = row["op_type"]
         source = row["source"]
         target = row["target"]
         if op_type in {"move", "rename"}:
+            if not target:
+                raise OperationExecutionError(f"Missing target for entry {row['id']}")
             inverse = ReversibleOperation(op_type, str(target), source, "journal rollback")
             preflight_operation(inverse)
+            planned_vacated_paths.add(_normalized_path(target))
             inverse_rows.append((row, inverse))
         elif op_type == "delete-to-quarantine":
             if not target:
                 raise OperationExecutionError(f"Missing quarantine target for entry {row['id']}")
             inverse = ReversibleOperation("move", target, source, "undo quarantine")
             preflight_operation(inverse)
+            planned_vacated_paths.add(_normalized_path(target))
             inverse_rows.append((row, inverse))
         elif op_type == "mkdir":
             path = Path(source)
             if not path.exists():
                 raise OperationExecutionError(f"Created directory disappeared before undo: {path}")
-            if any(path.iterdir()):
-                raise OperationExecutionError(f"Refusing to remove non-empty directory during undo: {path}")
+            remaining = [
+                child
+                for child in path.iterdir()
+                if _normalized_path(child) not in planned_vacated_paths
+            ]
+            if remaining:
+                raise OperationExecutionError(
+                    f"Refusing to remove directory with user/untracked content during undo: {path}"
+                )
             inverse_rows.append((row, None))
         else:
             raise OperationExecutionError(f"Unsupported journal operation during undo: {op_type}")
