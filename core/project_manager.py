@@ -5,6 +5,7 @@ from collections import Counter
 from pathlib import Path
 
 from .classifier import project_hint
+from .layout_memory import best_user_layout_folder
 from .version_manager import detect_version
 
 CATEGORY_FOLDER_WORDS = {
@@ -60,6 +61,7 @@ def rank_existing_folders(
     projects: list[dict],
     limit: int = 5,
     scan_root: str | None = None,
+    all_files: list[dict] | None = None,
 ) -> list[dict]:
     project_name = record.get("project_hint") or project_hint(Path(record.get("path", "")), projects)
     project = next((p for p in projects if p.get("name") == project_name), None)
@@ -67,13 +69,26 @@ def rank_existing_folders(
     version = detect_version(record.get("name", ""))
     parent = record.get("parent", "")
     source_scope = _structural_scope(record, scan_root)
+    all_files = all_files or []
+
+    # Existing project internals are frozen. Smart Organizer routes loose/new
+    # files; it does not reorganize a working project from the inside.
+    if source_scope is not None:
+        return [{"path": parent, "score": 1000, "reason": "preserve_existing_project_tree"}]
+
     ranked: list[tuple[int, int, dict]] = []
 
-    # Existing project internals are intentionally frozen. Smart Organizer is
-    # for routing loose/new files into the user's structure, not rewriting a
-    # working project because another folder happens to be called src/app/docs.
-    if source_scope is not None:
-        return [{"path": parent, "score": 100, "reason": "preserve_existing_project_tree"}]
+    # First and strongest signal: how the user actually uses folders now.
+    learned = best_user_layout_folder(record, folders, all_files, scan_root)
+    if learned:
+        learned_folder = next((folder for folder in folders if _norm(folder.get("path", "")) == _norm(learned["path"])), None)
+        if learned_folder:
+            ranked.append((int(learned["score"]) + 100, -int(learned_folder.get("depth", 0)), {
+                "path": learned["path"],
+                "score": int(learned["score"]) + 100,
+                "reason": learned["reason"],
+                "evidence": learned.get("evidence", []),
+            }))
 
     aliases: set[str] = set()
     keywords: set[str] = set()
@@ -82,45 +97,77 @@ def rank_existing_folders(
         keywords = {str(k).lower() for k in project.get("keywords", []) if len(str(k)) >= 3}
 
     for folder in folders:
-        path = folder.get("path", "")
-        name = folder.get("name", "")
+        path = str(folder.get("path", ""))
+        name = str(folder.get("name", ""))
+        if not path or _norm(path) == _norm(parent):
+            continue
         lower_path = path.lower()
         lower_name = name.lower()
         depth = int(folder.get("depth", 0))
         score = 0
 
         if project:
-            # For a recognized project, destination identity must be explicit:
-            # a project name/alias in the folder path is required. Generic
-            # keywords such as bot/app/src are not enough to cross project trees.
+            # Recognized project files may go only into an explicitly matching
+            # project tree. Generic words such as bot/app/src are not enough.
             alias_match = any(alias and alias in lower_path for alias in aliases)
             if not alias_match:
                 continue
-            score += 14
-            score += min(8, sum(2 for kw in keywords if kw in lower_path))
+            score += 40
+            score += min(10, sum(2 for kw in keywords if kw in lower_path))
         else:
-            # Unknown loose files may use only root-level user category folders.
-            # This prevents a random Desktop image from being moved into
-            # Project-B/images just because that generic folder exists.
+            # Unknown loose files may use only shallow user folders. Nested
+            # folders are often project internals and are never guessed into.
             if depth > 1:
                 continue
 
+        # Folder names are only a weak hint now. Actual user contents above are
+        # deliberately much stronger so the program follows the user's layout.
         for word in CATEGORY_FOLDER_WORDS.get(category, ()):
             if word in lower_name:
-                score += 6
+                score += 4
         if version and version.normalized.lower() in lower_path.replace("_", "-"):
-            score += 8
-        if _norm(path) == _norm(parent) and score:
-            score += 3
-        if score:
-            ranked.append((score, -depth, folder))
+            score += 6
 
-    ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-    return [{"path": item[2]["path"], "score": item[0], "reason": "existing_user_structure"} for item in ranked[:limit]]
+        # Never move merely because a generic folder name matched. Require a
+        # meaningful project match or let the learned-layout scorer decide.
+        minimum = 30 if project else 12
+        if score >= minimum:
+            ranked.append((score, -depth, {
+                "path": path,
+                "score": score,
+                "reason": "existing_user_structure_name_hint",
+                "evidence": ["совпадение с существующей структурой"] if score else [],
+            }))
+
+    ranked.sort(key=lambda item: (item[0], item[1], item[2]["path"].casefold()), reverse=True)
+    seen: set[str] = set()
+    result: list[dict] = []
+    for _score, _depth, item in ranked:
+        key = _norm(item["path"])
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(item)
+        if len(result) >= limit:
+            break
+    return result
 
 
-def suggest_destination(record: dict, folders: list[dict], projects: list[dict], scan_root: str | None = None) -> dict:
-    ranked = rank_existing_folders(record, folders, projects, limit=1, scan_root=scan_root)
+def suggest_destination(
+    record: dict,
+    folders: list[dict],
+    projects: list[dict],
+    scan_root: str | None = None,
+    all_files: list[dict] | None = None,
+) -> dict:
+    ranked = rank_existing_folders(
+        record,
+        folders,
+        projects,
+        limit=1,
+        scan_root=scan_root,
+        all_files=all_files,
+    )
     if ranked:
         return {"mode": "existing", **ranked[0]}
 
@@ -128,12 +175,22 @@ def suggest_destination(record: dict, folders: list[dict], projects: list[dict],
     project = next((p for p in projects if p.get("name") == project_name), None)
     base = Path(scan_root or record.get("parent") or ".")
     category = str(record.get("category") or "Прочее")
+
+    # If no existing placement pattern is convincing, do not pretend to know
+    # where the file belongs. A new-folder suggestion is low confidence and can
+    # only become executable after explicit confirmation.
     if project:
         root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
         proposed = base / root_hint / project["name"] / category
     else:
         proposed = base / "Smart-Organizer_Unsorted" / category
-    return {"mode": "proposed", "path": str(proposed), "score": 0, "reason": "no_existing_match_create_only_after_confirmation"}
+    return {
+        "mode": "proposed",
+        "path": str(proposed),
+        "score": 0,
+        "reason": "no_confident_user_layout_match_create_only_after_confirmation",
+        "evidence": [],
+    }
 
 
 def summarize_projects(files: list[dict], folders: list[dict], projects: list[dict]) -> list[dict]:
