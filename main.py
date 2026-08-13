@@ -39,6 +39,25 @@ def _install_real_windows_folder_resolver(main_window) -> None:
     main_window.SmartOrganizerApp.scan_desktop = scan_desktop
 
 
+def _run_app_self_test(app) -> None:
+    """Construct every major screen without entering the interactive event loop."""
+    screens = [
+        app.show_home,
+        app.show_files,
+        app.show_projects,
+        app.show_memory,
+        app.show_github,
+        app.show_archives,
+        app.show_settings,
+    ]
+    if hasattr(app, "show_diagnostics"):
+        screens.append(app.show_diagnostics)
+    for screen in screens:
+        screen()
+        app.update_idletasks()
+    app.on_close()
+
+
 def main() -> None:
     # Startup must never wait for the internet and must remain repairable even
     # when an old frozen launcher is temporarily missing a newer stdlib module.
@@ -100,6 +119,11 @@ def main() -> None:
             app.db.log_action("startup-compatibility", None, "warning", " | ".join(startup_warnings))
         except Exception:
             pass
+
+    if "--app-self-test" in sys.argv:
+        _run_app_self_test(app)
+        return
+
     app.mainloop()
 
 
