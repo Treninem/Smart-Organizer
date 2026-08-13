@@ -5,6 +5,7 @@ from pathlib import Path
 
 from core.duplicates import duplicate_scope, sha256_file
 from core.operation_journal import ReversibleOperation, same_path, validate_no_destructive_conflicts
+from core.undo_feedback import remember_undone_moves
 
 
 class OperationExecutionError(RuntimeError):
@@ -30,14 +31,6 @@ def _ensure_free_target(source: Path, target: Path) -> None:
 
 
 def _verify_duplicate_quarantine_proof(operation: ReversibleOperation) -> None:
-    """Re-check old/new duplicate quarantine plans immediately before use.
-
-    Real duplicate-quarantine plans record the canonical file in the reason.
-    When such proof is present, the executor refuses to quarantine across a
-    project/parent boundary and recomputes full SHA-256 for both files. This
-    also protects already-planned batches created by older Smart Organizer
-    versions before project-scope duplicate isolation existed.
-    """
     marker = "exact sha-256 duplicate of "
     reason = str(operation.reason or "")
     lowered = reason.casefold()
@@ -76,8 +69,6 @@ def _verify_duplicate_quarantine_proof(operation: ReversibleOperation) -> None:
 
 
 def preflight_operation(operation: ReversibleOperation) -> None:
-    """Validate the current filesystem state without changing it."""
-
     operation.validate()
     source = Path(operation.source)
     if operation.op_type in {"move", "rename"}:
@@ -102,7 +93,6 @@ def preflight_operation(operation: ReversibleOperation) -> None:
 
 
 def _preflight_batch_operation(operation: ReversibleOperation, created_dirs: set[str]) -> None:
-    """Preflight one batch item, allowing parents created earlier in this batch."""
     operation.validate()
     source = Path(operation.source)
 
@@ -138,8 +128,6 @@ def _preflight_batch_operation(operation: ReversibleOperation, created_dirs: set
 
 
 def execute_operation(operation: ReversibleOperation) -> dict:
-    """Execute one reviewed reversible operation without overwriting targets."""
-
     preflight_operation(operation)
     source = Path(operation.source)
 
@@ -157,13 +145,6 @@ def execute_operation(operation: ReversibleOperation) -> dict:
 
 
 def execute_batch(journal, batch_id: str) -> dict:
-    """Apply a persisted batch only after the whole batch passes preflight.
-
-    A batch containing a previous failed entry is not silently resumed. The user
-    must generate a fresh plan after resolving the conflict, which keeps the
-    journal deterministic and understandable.
-    """
-
     rows = journal.entries(batch_id=batch_id, limit=5000)
     if any(row["status"] == "failed" for row in rows):
         raise OperationExecutionError(
@@ -208,16 +189,12 @@ def execute_batch(journal, batch_id: str) -> dict:
 
 
 def undo_batch(journal, batch_id: str) -> dict:
-    """Undo all currently applied entries in reverse sequence order."""
-
+    """Undo all applied entries and remember rejected move destinations."""
     rows = journal.entries(batch_id=batch_id, limit=5000)
     applied = [row for row in rows if row["status"] == "applied"]
     if not applied:
         raise OperationExecutionError(f"No applied operations to undo in batch: {batch_id}")
 
-    # Build all inverse operations first. Files and folders scheduled to leave a
-    # batch-created directory count as planned removals. Any unrelated user file
-    # still blocks Undo.
     inverse_rows: list[tuple[dict, ReversibleOperation | None]] = []
     planned_vacated_paths: set[str] = set()
     reversed_rows = list(reversed(applied))
@@ -253,8 +230,6 @@ def undo_batch(journal, batch_id: str) -> dict:
                 raise OperationExecutionError(
                     f"Refusing to remove directory with user/untracked content during undo: {path}"
                 )
-            # Parent folders processed later in reverse order may contain this
-            # directory now, but it is itself scheduled for removal first.
             planned_vacated_paths.add(_normalized_path(path))
             inverse_rows.append((row, None))
         else:
@@ -271,4 +246,5 @@ def undo_batch(journal, batch_id: str) -> dict:
             journal.mark_undone(int(row["id"]), {"inverse": details})
         undone += 1
 
-    return {"batch_id": batch_id, "undone": undone}
+    remembered = remember_undone_moves(journal.db, applied)
+    return {"batch_id": batch_id, "undone": undone, "remembered_rejections": remembered}
