@@ -28,6 +28,77 @@ def install_stable_workflow_runtime(main_window) -> None:
         return
     cls._stable_workflow_runtime_installed = True
 
+    def _set_stable_nav(self, title: str) -> None:
+        for text, button in getattr(self, "_stable_nav_buttons", {}).items():
+            try:
+                button.configure(style="NavActive.TButton" if text == title else "Nav.TButton")
+            except Exception:
+                pass
+
+    def _build_ui(self) -> None:
+        outer = ttk.Frame(self, padding=14)
+        outer.pack(fill="both", expand=True)
+
+        sidebar = ttk.Frame(outer, width=220)
+        sidebar.pack(side="left", fill="y", padx=(0, 14))
+        sidebar.pack_propagate(False)
+        ttk.Label(sidebar, text="Smart Organizer", style="Title.TLabel").pack(anchor="w", pady=(4, 2))
+        ttk.Label(sidebar, text=f"v{main_window.APP_VERSION}", style="SubTitle.TLabel").pack(anchor="w", pady=(0, 16))
+
+        self._stable_nav_buttons = {}
+        navigation = [
+            ("Главная", self.show_home),
+            ("Навести порядок", self.show_files),
+            ("Проекты", self.show_projects),
+            ("Архивы", self.show_archives),
+            ("Настройки", self.show_settings),
+        ]
+        for text, command in navigation:
+            button = ttk.Button(
+                sidebar,
+                text=text,
+                style="Nav.TButton",
+                command=lambda t=text, fn=command: (self._set_stable_nav(t), fn()),
+            )
+            button.pack(fill="x", pady=4)
+            self._stable_nav_buttons[text] = button
+
+        ttk.Separator(sidebar).pack(fill="x", pady=16)
+        ttk.Label(sidebar, text="Безопасный режим", style="SubTitle.TLabel").pack(anchor="w")
+        ttk.Label(
+            sidebar,
+            text="Проекты не перестраиваются.\nПерезапись запрещена.\nВсе перемещения с Undo.",
+            justify="left",
+            wraplength=190,
+        ).pack(anchor="w", pady=(6, 0))
+
+        right = ttk.Frame(outer)
+        right.pack(side="left", fill="both", expand=True)
+        self.content = ttk.Frame(right)
+        self.content.pack(fill="both", expand=True)
+        ttk.Separator(right).pack(fill="x", pady=(8, 6))
+        ttk.Label(right, textvariable=self.status_var).pack(anchor="w")
+        self._set_stable_nav("Главная")
+        self.show_home()
+
+    def show_section(self, title: str) -> None:
+        # Compatibility with older callers while exposing only stable sections.
+        mapping = {
+            "🏠 Главная": ("Главная", self.show_home),
+            "Главная": ("Главная", self.show_home),
+            "📂 Файлы": ("Навести порядок", self.show_files),
+            "Навести порядок": ("Навести порядок", self.show_files),
+            "🤖 Проекты": ("Проекты", self.show_projects),
+            "Проекты": ("Проекты", self.show_projects),
+            "📦 Архивы": ("Архивы", self.show_archives),
+            "Архивы": ("Архивы", self.show_archives),
+            "⚙ Настройки": ("Настройки", self.show_settings),
+            "Настройки": ("Настройки", self.show_settings),
+        }
+        nav_title, command = mapping.get(title, ("Главная", self.show_home))
+        self._set_stable_nav(nav_title)
+        command()
+
     def _current_plan(self) -> dict:
         return build_sort_plan(
             self.db.snapshot_files(),
@@ -101,6 +172,7 @@ def install_stable_workflow_runtime(main_window) -> None:
             summary, plan = payload
             self._last_sort_plan = plan
             self.refresh_dashboard()
+            self._set_stable_nav("Навести порядок")
             self._render_stable_files_screen()
             self._render_plan(plan)
             self.status_var.set(
@@ -186,6 +258,7 @@ def install_stable_workflow_runtime(main_window) -> None:
         scan_root = self.db.get_setting("last_scan_root")
 
         def done(groups):
+            self._set_stable_nav("Навести порядок")
             self._render_stable_files_screen()
             box = self.file_results
             box.configure(state="normal")
@@ -240,6 +313,7 @@ def install_stable_workflow_runtime(main_window) -> None:
         def done(payload):
             result, _refreshed = payload
             self.refresh_dashboard()
+            self._set_stable_nav("Навести порядок")
             self._render_stable_files_screen()
             if self.db.snapshot_files():
                 self._render_plan(_current_plan(self))
@@ -277,9 +351,11 @@ def install_stable_workflow_runtime(main_window) -> None:
             self.file_results.insert("end", "Сначала нажмите «Выбрать и анализировать».\n")
 
     def show_files(self) -> None:
+        self._set_stable_nav("Навести порядок")
         self._render_stable_files_screen()
 
     def show_home(self) -> None:
+        self._set_stable_nav("Главная")
         self.clear_content()
         ttk.Label(self.content, text="Smart Organizer", style="Title.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(
@@ -322,6 +398,7 @@ def install_stable_workflow_runtime(main_window) -> None:
         )
 
     def show_settings(self) -> None:
+        self._set_stable_nav("Настройки")
         self.clear_content()
         ttk.Label(self.content, text="Настройки", style="Title.TLabel").pack(anchor="w", pady=(4, 8))
         ttk.Label(
@@ -355,6 +432,9 @@ def install_stable_workflow_runtime(main_window) -> None:
             justify="left",
         ).pack(anchor="w", pady=(16, 0))
 
+    cls._set_stable_nav = _set_stable_nav
+    cls._build_ui = _build_ui
+    cls.show_section = show_section
     cls._current_plan = _current_plan
     cls._render_plan = _render_plan
     cls._rescan_snapshot = _rescan_snapshot
