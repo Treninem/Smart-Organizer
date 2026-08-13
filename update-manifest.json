@@ -1,23 +1,12 @@
 {
-  "version": "0.2.13",
+  "version": "0.2.14",
   "channel": "legacy-runtime-bridge",
   "files": [
-    {
-      "path": "main.py"
-    },
-    {
-      "path": "core/runtime_update.py"
-    },
-    {
-      "path": "core/auto_update_runtime.py"
-    },
-    {
-      "path": "version.json"
-    }
+    {"path": "main.py"},
+    {"path": "core/runtime_update.py"},
+    {"path": "core/auto_update_runtime.py"},
+    {"path": "version.json"}
   ],
-  "preserve": [
-    "data/",
-    "logs/"
-  ],
-  "note": "Compatibility bridge for legacy v0.2.x launchers. main.py is installed first so optional modern UI imports can fail safely instead of bricking startup; runtime_update.py and auto_update_runtime.py then migrate to the verified onedir bundle; version.json is last."
+  "preserve": ["data/", "logs/"],
+  "note": "Compatibility bridge for legacy v0.2.x launchers. main.py is installed first so optional runtime layers fail safely; runtime_update.py and auto_update_runtime.py then migrate to the verified onedir bundle; version.json is last."
 }
