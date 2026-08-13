@@ -1,10 +1,10 @@
 {
-  "schema": 1,
+  "schema": 2,
   "principles": [
     "Сначала изучай существующую структуру пользователя; никогда не перестраивай её ради собственного шаблона.",
     "Если подходящая папка уже существует, предпочитай её созданию новой.",
-    "В v0.1.0 только анализ: не перемещать, не переименовывать и не удалять пользовательские файлы.",
-    "Точная копия определяется содержимым (SHA-256), а не только похожим именем.",
+    "Планирование не меняет файловую систему. Перемещение, переименование и карантин выполняются только после отдельного подтверждения; существующие целевые файлы не перезаписываются; применённые операции должны иметь Undo.",
+    "Точная копия определяется содержимым (SHA-256), а не только похожим именем или размером.",
     "Разные версии одного проекта не являются дубликатами автоматически.",
     "Локальная база data/ является личной памятью и не должна отправляться в GitHub или заменяться обновлением."
   ],
@@ -53,6 +53,44 @@
       "keywords": ["smart organizer", "smart-organizer", "knowledge.db", "file sorter"],
       "status": "current",
       "notes": "Собственные файлы программы. data/ и logs/ локальные и не заменяются обновлением."
+    }
+  ],
+  "templates": [
+    {
+      "name": "Telegram / VK Mini App",
+      "type": "bot-miniapp",
+      "keywords": ["telegram", "vk", "bot", "miniapp", "mini app", "webapp", "aiogram", "fastapi"],
+      "markers": ["requirements.txt", "bot.py", "main.py", "app", "handlers", "static", "templates"]
+    },
+    {
+      "name": "Minecraft Server",
+      "type": "minecraft-server",
+      "keywords": ["minecraft", "paper", "spigot", "datapack", "plugin", "minekeep"],
+      "markers": ["server.properties", "plugins", "world", "datapacks", "paper-global.yml"]
+    },
+    {
+      "name": "Game Project",
+      "type": "game",
+      "keywords": ["game", "unity", "unreal", "godot", "assets", "scenes", "scripts"],
+      "markers": ["project.godot", "Assets", "ProjectSettings", "Content", "Scenes", "Scripts"]
+    },
+    {
+      "name": "Website",
+      "type": "website",
+      "keywords": ["website", "frontend", "backend", "react", "vue", "next", "html", "css"],
+      "markers": ["package.json", "index.html", "src", "public", "static", "templates"]
+    },
+    {
+      "name": "Production System",
+      "type": "production",
+      "keywords": ["production", "warehouse", "inventory", "factory", "производство", "склад", "учёт"],
+      "markers": ["production", "warehouse", "inventory", "reports", "bot", "miniapp"]
+    },
+    {
+      "name": "Drawings / CAD",
+      "type": "cad-drawings",
+      "keywords": ["drawing", "cad", "чертёж", "чертеж", "model", "3d", "step", "dxf", "dwg"],
+      "markers": ["Drawings", "CAD", "Models", "STEP", "DXF", "DWG"]
     }
   ],
   "rules": [
