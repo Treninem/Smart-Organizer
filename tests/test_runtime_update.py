@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from core.runtime_update import create_apply_script, runtime_update_needed
+from core.runtime_update import create_apply_script, runtime_release_ready, runtime_update_needed
 
 
 class RuntimeUpdateTests(unittest.TestCase):
@@ -28,6 +28,16 @@ class RuntimeUpdateTests(unittest.TestCase):
             manifest = {"version": "0.2.7"}
             release = {"target_commitish": "published-build"}
             self.assertTrue(runtime_update_needed(root, "0.2.7", manifest, release))
+
+    def test_release_must_match_manifest_before_download(self):
+        manifest = {"version": "0.2.11"}
+        release = {
+            "target_commitish": "abc123",
+            "assets": [{"name": "SmartOrganizer-runtime.zip"}],
+        }
+        self.assertFalse(runtime_release_ready(manifest, release, "0.2.10"))
+        self.assertTrue(runtime_release_ready(manifest, release, "0.2.11"))
+        self.assertFalse(runtime_release_ready(manifest, {"target_commitish": "abc123", "assets": []}, "0.2.11"))
 
     def _script_text(self) -> str:
         tmp = tempfile.TemporaryDirectory()
