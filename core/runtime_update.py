@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
@@ -23,15 +24,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _fresh_request(url: str) -> urllib.request.Request:
+    separator = "&" if "?" in url else "?"
+    fresh_url = f"{url}{separator}_so={time.time_ns()}"
+    return urllib.request.Request(
+        fresh_url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Cache-Control": "no-cache, no-store, max-age=0",
+            "Pragma": "no-cache",
+            "Accept": "application/vnd.github+json, application/json",
+        },
+    )
+
+
 def fetch_runtime_manifest(timeout: int = 8) -> dict:
-    req = urllib.request.Request(RUNTIME_MANIFEST_URL, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with urllib.request.urlopen(_fresh_request(RUNTIME_MANIFEST_URL), timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
 def fetch_runtime_release(timeout: int = 8) -> dict:
-    req = urllib.request.Request(RELEASE_API, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with urllib.request.urlopen(_fresh_request(RELEASE_API), timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
 
 
@@ -57,8 +70,6 @@ def runtime_update_needed(root: Path, current_version: str, manifest: dict, rele
         return True
     target = str(release.get("target_commitish") or "").strip()
     local_build = local_runtime_build(root)
-    # A missing build marker means the installation cannot be proven to match
-    # the published runtime. Treat it as stale instead of silently accepting it.
     return bool(target and target != local_build)
 
 
@@ -75,20 +86,24 @@ def fetch_release_version(release: dict, timeout: int = 8) -> str:
     if not target:
         return ""
     url = f"{REPO_RAW}/{target}/version.json"
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=timeout) as response:
+    with urllib.request.urlopen(_fresh_request(url), timeout=timeout) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return str(payload.get("version", ""))
 
 
 def runtime_release_ready(manifest: dict, release: dict, release_version: str) -> bool:
-    expected = str(manifest.get("version", "")).strip()
+    manifest_version = str(manifest.get("version", "")).strip()
     target = str(release.get("target_commitish") or "").strip()
-    return bool(expected and target and release_version.strip() == expected and find_runtime_asset(release))
+    if not manifest_version or not release_version.strip() or not target or not find_runtime_asset(release):
+        return False
+    # main/raw metadata may be briefly stale after a successful release update.
+    # The exact release target commit is authoritative. We only block when main
+    # advertises a version newer than the published release asset.
+    return _version_tuple(release_version) >= _version_tuple(manifest_version)
 
 
-def ensure_runtime_release_ready(manifest: dict, release: dict, timeout: int = 8) -> None:
-    """Reject the publication race where main manifest is newer than release assets."""
+def ensure_runtime_release_ready(manifest: dict, release: dict, timeout: int = 8) -> str:
+    """Return the exact published runtime version or reject a publication race."""
     release_version = fetch_release_version(release, timeout=timeout)
     if not runtime_release_ready(manifest, release, release_version):
         expected = str(manifest.get("version", "?"))
@@ -97,6 +112,7 @@ def ensure_runtime_release_ready(manifest: dict, release: dict, timeout: int = 8
             f"Runtime {expected} ещё публикуется: версия готового пакета {actual}. "
             "Старая сборка не будет установлена поверх новой метаинформации."
         )
+    return release_version
 
 
 def download_runtime_bundle(root: Path, asset: dict) -> Path:
@@ -109,7 +125,7 @@ def download_runtime_bundle(root: Path, asset: dict) -> Path:
     staging.mkdir(parents=True, exist_ok=True)
     destination = staging / RUNTIME_ASSET
 
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Cache-Control": "no-cache"})
     with urllib.request.urlopen(req, timeout=90) as response, destination.open("wb") as out:
         while True:
             chunk = response.read(1024 * 1024)
@@ -128,13 +144,7 @@ def download_runtime_bundle(root: Path, asset: dict) -> Path:
 
 
 def create_apply_script(root: Path, bundle: Path, process_id: int) -> Path:
-    """Create an ASCII PowerShell transaction that runs after the app exits.
-
-    The bundle never contains data/ or logs/. The unpacked candidate is first
-    executed with --self-test before the installed runtime is touched. After the
-    swap, the installed copy is self-tested again before the backup is removed.
-    Any failure restores the complete previous runtime.
-    """
+    """Create an ASCII PowerShell transaction that runs after the app exits."""
     script = root / ".apply-smart-organizer-runtime.ps1"
     unpack = root / ".runtime-new"
     backup = root / ".runtime-backup"
