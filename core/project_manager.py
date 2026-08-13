@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections import Counter
 from pathlib import Path
 
@@ -26,12 +27,51 @@ TYPE_ROOT_HINTS = {
 }
 
 
-def rank_existing_folders(record: dict, folders: list[dict], projects: list[dict], limit: int = 5) -> list[dict]:
+def _norm(path: str | Path) -> str:
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def _is_within(path: str | Path, root: str | Path) -> bool:
+    try:
+        Path(path).resolve().relative_to(Path(root).resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _structural_scope(record: dict, scan_root: str | None) -> Path | None:
+    """Return the first user folder below scan_root when a file is already nested.
+
+    Files directly in the scan root are treated as inbox-like items and may be
+    routed into a recognized project. Files already inside Project-A stay inside
+    Project-A unless a recognized project match explicitly points elsewhere.
+    """
+    if not scan_root:
+        return None
+    source = Path(str(record.get("path") or ""))
+    root = Path(scan_root)
+    try:
+        relative = source.relative_to(root)
+    except (ValueError, OSError):
+        return None
+    if len(relative.parts) < 2:
+        return None
+    return root / relative.parts[0]
+
+
+def rank_existing_folders(
+    record: dict,
+    folders: list[dict],
+    projects: list[dict],
+    limit: int = 5,
+    scan_root: str | None = None,
+) -> list[dict]:
     project_name = record.get("project_hint") or project_hint(Path(record.get("path", "")), projects)
     project = next((p for p in projects if p.get("name") == project_name), None)
     category = record.get("category") or ""
     version = detect_version(record.get("name", ""))
     parent = record.get("parent", "")
+    source_scope = _structural_scope(record, scan_root)
     ranked: list[tuple[int, int, dict]] = []
 
     aliases: set[str] = set()
@@ -45,22 +85,35 @@ def rank_existing_folders(record: dict, folders: list[dict], projects: list[dict
         name = folder.get("name", "")
         lower_path = path.lower()
         lower_name = name.lower()
+
+        # Strong safety boundary: an unknown file that already belongs to one
+        # top-level project tree cannot be moved into another project merely
+        # because both contain generic folders such as src/app/images/docs.
+        within_source_scope = bool(source_scope and _is_within(path, source_scope))
+        project_evidence = False
+        if project:
+            project_evidence = any(alias and alias in lower_path for alias in aliases)
+            project_evidence = project_evidence or any(kw and kw in lower_path for kw in keywords)
+            if source_scope and not within_source_scope and not project_evidence:
+                continue
+        elif source_scope and not within_source_scope:
+            continue
+
         score = 0
         if project:
             for alias in aliases:
                 if alias and alias in lower_path:
                     score += 14
             score += min(8, sum(2 for kw in keywords if kw in lower_path))
+        if within_source_scope:
+            score += 10
         for word in CATEGORY_FOLDER_WORDS.get(category, ()):
             if word in lower_name:
                 score += 6
         if version and version.normalized.lower() in lower_path.replace("_", "-"):
             score += 8
         # Being the current parent is not evidence that it is the best destination.
-        # Otherwise every scanned file scores its own folder highest and the
-        # organizer can never discover a better existing user folder. A small
-        # tie-break bonus is safe only after semantic/project evidence exists.
-        if path == parent and score:
+        if _norm(path) == _norm(parent) and score:
             score += 3
         if score:
             depth = int(folder.get("depth", 0))
@@ -71,16 +124,22 @@ def rank_existing_folders(record: dict, folders: list[dict], projects: list[dict
 
 
 def suggest_destination(record: dict, folders: list[dict], projects: list[dict], scan_root: str | None = None) -> dict:
-    ranked = rank_existing_folders(record, folders, projects, limit=1)
+    ranked = rank_existing_folders(record, folders, projects, limit=1, scan_root=scan_root)
     if ranked:
         return {"mode": "existing", **ranked[0]}
 
     project_name = record.get("project_hint") or project_hint(Path(record.get("path", "")), projects)
     project = next((p for p in projects if p.get("name") == project_name), None)
-    base = Path(scan_root or record.get("parent") or ".")
+    source_scope = _structural_scope(record, scan_root)
+    base = source_scope or Path(scan_root or record.get("parent") or ".")
     if project:
-        root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
-        proposed = base / root_hint / project["name"]
+        # If the file is already inside a user project tree, keep any generated
+        # fallback inside that tree instead of building a parallel global tree.
+        if source_scope:
+            proposed = base / "Smart-Organizer_Sorted" / (record.get("category") or "Other")
+        else:
+            root_hint = TYPE_ROOT_HINTS.get(project.get("type", ""), "Projects")
+            proposed = base / root_hint / project["name"]
     else:
         proposed = base / "Smart-Organizer_Unsorted"
     return {"mode": "proposed", "path": str(proposed), "score": 0, "reason": "no_existing_match_create_only_after_confirmation"}
