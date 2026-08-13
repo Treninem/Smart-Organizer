@@ -29,44 +29,54 @@ class RuntimeUpdateTests(unittest.TestCase):
             release = {"target_commitish": "published-build"}
             self.assertTrue(runtime_update_needed(root, "0.2.7", manifest, release))
 
+    def _script_text(self) -> str:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        bundle = root / ".update-staging" / "SmartOrganizer-runtime.zip"
+        bundle.parent.mkdir(parents=True)
+        bundle.write_bytes(b"zip-placeholder")
+        return create_apply_script(root, bundle, 12345).read_text(encoding="ascii")
+
     def test_apply_script_resets_pyinstaller_environment_and_preserves_data(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bundle = root / ".update-staging" / "SmartOrganizer-runtime.zip"
-            bundle.parent.mkdir(parents=True)
-            bundle.write_bytes(b"zip-placeholder")
-            script = create_apply_script(root, bundle, 12345)
-            text = script.read_text(encoding="ascii")
-            self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", text)
-            self.assertIn("_PYI_APPLICATION_HOME_DIR", text)
-            self.assertNotIn("Join-Path $root 'data'", text)
-            self.assertNotIn("Join-Path $root 'logs'", text)
-            self.assertIn(".runtime-backup", text)
+        text = self._script_text()
+        self.assertIn("PYINSTALLER_RESET_ENVIRONMENT", text)
+        self.assertIn("_PYI_APPLICATION_HOME_DIR", text)
+        self.assertNotIn("Join-Path $root 'data'", text)
+        self.assertNotIn("Join-Path $root 'logs'", text)
+        self.assertIn(".runtime-backup", text)
 
     def test_apply_script_backs_up_complete_replaceable_runtime(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            bundle = root / ".update-staging" / "SmartOrganizer-runtime.zip"
-            bundle.parent.mkdir(parents=True)
-            bundle.write_bytes(b"zip-placeholder")
-            script = create_apply_script(root, bundle, 12345)
-            text = script.read_text(encoding="ascii")
-            for item in (
-                "SmartOrganizer.exe",
-                "updater.exe",
-                "_runtime",
-                "main.py",
-                "app",
-                "core",
-                "modules",
-                "config",
-                "version.json",
-                "runtime-manifest.json",
-                "runtime-build.txt",
-            ):
-                self.assertIn(f"'{item}'", text)
-            self.assertIn("foreach ($name in $runtimeItems)", text)
-            self.assertIn("Move-Item -LiteralPath $saved", text)
+        text = self._script_text()
+        for item in (
+            "SmartOrganizer.exe",
+            "updater.exe",
+            "_runtime",
+            "main.py",
+            "app",
+            "core",
+            "modules",
+            "config",
+            "version.json",
+            "runtime-manifest.json",
+            "runtime-build.txt",
+        ):
+            self.assertIn(f"'{item}'", text)
+        self.assertIn("foreach ($name in $runtimeItems)", text)
+        self.assertIn("Move-Item -LiteralPath $saved", text)
+
+    def test_apply_script_self_tests_candidate_before_backup(self):
+        text = self._script_text()
+        candidate = text.index("Candidate runtime self-test failed")
+        backup = text.index("New-Item -ItemType Directory -Force -Path $backup")
+        self.assertLess(candidate, backup)
+        self.assertIn("-ArgumentList '--self-test'", text)
+
+    def test_apply_script_self_tests_installed_runtime_before_deleting_backup(self):
+        text = self._script_text()
+        installed = text.index("Installed runtime self-test failed")
+        delete_backup = text.index("Remove-Item -LiteralPath $backup -Recurse -Force", installed)
+        self.assertLess(installed, delete_backup)
 
 
 if __name__ == "__main__":
