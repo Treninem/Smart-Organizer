@@ -40,21 +40,59 @@ def _install_real_windows_folder_resolver(main_window) -> None:
 
 
 def main() -> None:
-    # Startup must never wait for the internet. The window is created first;
-    # periodic update checks start in the background from the UI runtime.
+    # Startup must never wait for the internet and must remain repairable even
+    # when an old frozen launcher is temporarily missing a newer stdlib module.
     current_version = _local_version()
     _install_tkinter_compat()
 
     import app.main_window as main_window
-    from core.auto_update_runtime import install_auto_update_runtime
-    from core.ui_runtime import install_ui_runtime
 
     main_window.APP_VERSION = current_version
     _install_real_windows_folder_resolver(main_window)
-    install_auto_update_runtime(main_window)
-    install_ui_runtime(main_window)
+    startup_warnings: list[str] = []
+
+    try:
+        from core.auto_update_runtime import install_auto_update_runtime
+
+        install_auto_update_runtime(main_window)
+    except Exception as exc:
+        # The legacy base window still contains the source updater. Keeping the
+        # application open lets that recovery path repair a partial migration.
+        startup_warnings.append(f"автообновление runtime: {exc}")
+
+    try:
+        from core.modern_ui_runtime import install_modern_ui_runtime
+
+        install_modern_ui_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"современный интерфейс: {exc}")
+
+    try:
+        from core.ui_runtime import install_ui_runtime
+
+        install_ui_runtime(main_window)
+    except Exception as exc:
+        # UI extensions are deliberately optional during a legacy migration.
+        # A missing bundled module must not brick the updater or the base app.
+        startup_warnings.append(f"расширения интерфейса: {exc}")
+
+    try:
+        from core.diagnostics_ui_runtime import install_diagnostics_ui_runtime
+
+        install_diagnostics_ui_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"диагностика: {exc}")
 
     app = main_window.SmartOrganizerApp()
+    if startup_warnings:
+        app.status_var.set(
+            "Запущен режим совместимости. Smart Organizer продолжит восстановление runtime; "
+            + " | ".join(startup_warnings[:2])
+        )
+        try:
+            app.db.log_action("startup-compatibility", None, "warning", " | ".join(startup_warnings))
+        except Exception:
+            pass
     app.mainloop()
 
 
