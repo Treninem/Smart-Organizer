@@ -11,6 +11,7 @@ from core.paths import app_root
 from core.runtime_update import (
     create_apply_script,
     download_runtime_bundle,
+    ensure_runtime_release_ready,
     fetch_runtime_manifest,
     fetch_runtime_release,
     find_runtime_asset,
@@ -153,6 +154,7 @@ def install_auto_update_runtime(main_window) -> None:
                 root = app_root()
                 manifest = fetch_runtime_manifest()
                 release = fetch_runtime_release()
+                ensure_runtime_release_ready(manifest, release)
                 if runtime_update_needed(root, main_window.APP_VERSION, manifest, release):
                     asset = find_runtime_asset(release)
                     if not asset:
@@ -226,7 +228,7 @@ def install_auto_update_runtime(main_window) -> None:
         ttk.Label(
             frame,
             text=(
-                "Обновляется весь runtime-пакет целиком. После проверки SHA-256 программа сама ждёт окончания работы, "
+                "Обновляется весь runtime-пакет целиком. После проверки версии релиза и SHA-256 программа сама ждёт окончания работы, "
                 "заменяет runtime и перезапускается. Локальные data/ и logs/ не затрагиваются."
             ),
             wraplength=720,
