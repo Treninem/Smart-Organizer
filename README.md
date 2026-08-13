@@ -7,15 +7,28 @@ Local-first Windows assistant for file, project and version management.
 - No paid APIs.
 - User data and learned knowledge stay on the PC.
 - GitHub stores code, build automation and update metadata, not the user's database.
-- Existing user folder trees have priority over generated templates.
+- Existing user folder trees and real placement habits have priority over generated templates.
+- Existing project internals are protected from automatic rearrangement.
 - Analysis and planning never silently change user files.
 - Confirmed filesystem operations are journaled, conflict-checked and reversible.
 
-## v0.2.11
+## v0.2.13
 
-Current Windows builds use a PyInstaller **onedir** runtime rather than onefile extraction. The UI is now a dark black/white theme with purple, turquoise and cyan accents; application buttons use a custom rounded Canvas implementation instead of the old flat Windows look.
+The organizer now follows the user's real existing layout instead of relying mainly on generic folder names. During every scan it learns how folders are already being used from the files stored directly inside them: category, extension, project association and archive usage. This evidence outranks names such as `Images`, `Archives`, `src` or `app`.
 
-Implemented:
+Important safety changes:
+- a loose archive is preferentially routed to the folder where the user already keeps archives;
+- folders with an existing history of the same category/extension/project receive higher confidence;
+- generic folder names alone are weak evidence and cannot pull files into unrelated project trees;
+- nested project folders are protected from receiving unrelated loose files;
+- files already inside a project tree stay where the user put them;
+- selecting a project root freezes its internal structure;
+- identical `main.py`, `config.json`, images, libraries and other files in different projects are not treated as removable duplicates;
+- exact duplicate detection remains limited to a safe project scope and still requires full SHA-256;
+- an already planned duplicate quarantine is revalidated before execution;
+- manual update checks now compare against the exact version of the published release commit instead of relying only on potentially stale raw metadata.
+
+## Implemented
 - modern dark Windows GUI with rounded buttons and black/white/purple/turquoise/cyan palette;
 - live CPU, RAM, disk and current network traffic counters;
 - real Windows Desktop and Downloads resolution, including redirected folders on another drive;
@@ -31,12 +44,11 @@ Implemented:
 - duplicate candidate analysis by normalized name and by size without falsely calling them exact duplicates;
 - exact duplicate detection with quick content prefiltering followed by full SHA-256 verification;
 - ZIP analysis in Python and RAR/7Z listing through 7-Zip without extraction;
-- read-only organization planning that prefers existing folders and marks suggestions requiring a new folder;
+- organization planning that learns from the user's current folder usage and prefers existing destinations supported by real evidence;
 - persistent reversible-operation journal in SQLite;
-- safe move intents only for already existing destination folders;
 - reviewed journal batches apply only after explicit confirmation;
 - whole-batch preflight checks sources, destination conflicts and parent folders before the first filesystem change;
-- applied journal batches can be undone in reverse order; Undo refuses to overwrite occupied paths or remove non-empty created folders;
+- applied journal batches can be undone in reverse order; Undo refuses to overwrite occupied paths or remove folders containing untracked user content;
 - local installation diagnostics integrated into the UI;
 - atomic full-runtime updates using `SmartOrganizer-runtime.zip` with SHA-256 verification;
 - update candidate self-test before replacement and installed-runtime self-test before old-runtime backup removal;
@@ -47,10 +59,10 @@ Implemented:
 
 ## Safety model
 
-Smart Organizer does **not** automatically reorganize or delete user files. Scanning, duplicate-candidate analysis, exact duplicate detection, archive inspection, Smart Brain analysis and organization planning are read-only. A filesystem change can happen only from a persisted journal batch after a separate confirmation in the UI.
+Smart Organizer does **not** silently reorganize or delete user files. Scanning, duplicate-candidate analysis, exact duplicate detection, archive inspection, Smart Brain analysis and organization planning are read-only. A filesystem change can happen only from a persisted journal batch after a separate confirmation in the UI.
 
-The executor does not overwrite an existing destination and does not silently create a missing destination folder. A batch is preflighted before the first change; a failed batch is not silently resumed. Undo performs its own safety checks before reversing applied operations.
+The executor does not overwrite an existing destination. A batch is preflighted before the first change; a failed batch is not silently resumed. Undo performs its own safety checks before reversing applied operations.
 
-A similar name or equal size is only a duplicate candidate. Exact duplicate status requires a full SHA-256 match. The Smart Brain never marks a file for deletion without that exact-content confirmation.
+A similar name or equal size is only a duplicate candidate. Exact duplicate status requires a full SHA-256 match inside the same safe project scope. Files belonging to different projects are independent even if their contents are byte-for-byte identical.
 
 Local learned knowledge, `data/knowledge.db`, local rule/project files and logs are intentionally excluded from GitHub and from runtime replacement.
