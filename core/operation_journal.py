@@ -1,9 +1,23 @@
 from __future__ import annotations
 
+import hashlib
 import json
-import uuid
-from dataclasses import asdict, dataclass
+import os
+import time
+from dataclasses import dataclass
 from pathlib import Path
+
+
+def _new_batch_id() -> str:
+    """Create a collision-resistant local batch id without optional frozen modules."""
+    seed = b"|".join(
+        [
+            str(time.time_ns()).encode("ascii"),
+            str(os.getpid()).encode("ascii"),
+            os.urandom(32),
+        ]
+    )
+    return hashlib.sha256(seed).hexdigest()[:32]
 
 
 @dataclass(frozen=True)
@@ -48,7 +62,7 @@ class OperationJournal:
         for operation in operations:
             operation.validate()
 
-        batch_id = uuid.uuid4().hex
+        batch_id = _new_batch_id()
         rows = []
         for index, operation in enumerate(operations):
             rows.append(
