@@ -37,11 +37,24 @@ class VersionInfo:
         return padded[:4] + (CHANNEL_RANK.get(self.channel, 0), self.qualifier_number)
 
 
+def _looks_like_calendar_date(parts: tuple[int, ...], raw: str) -> bool:
+    if re.match(r"(?i)^\s*(?:v|version)", raw):
+        return False
+    if len(parts) != 3:
+        return False
+    year, month, day = parts
+    return 1900 <= year <= 2100 and 1 <= month <= 12 and 1 <= day <= 31
+
+
 def _plausible_match(match: re.Match) -> bool:
     raw = match.group(0)
     explicit_prefix = bool(re.match(r"(?i)^\s*(?:v|version)", raw))
-    numeric_components = sum(1 for item in match.groups()[:4] if item is not None)
+    numeric_values = tuple(int(item) for item in match.groups()[:4] if item is not None)
+    numeric_components = len(numeric_values)
     has_qualifier = bool(match.group(5))
+
+    if _looks_like_calendar_date(numeric_values, raw):
+        return False
 
     # Bare numbers in ordinary filenames are usually years, chapter numbers,
     # dimensions or counters. Treat them as versions only when the author made
