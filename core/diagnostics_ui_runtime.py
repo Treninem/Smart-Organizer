@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from tkinter import ttk
-from tkinter.scrolledtext import ScrolledText
 
 from core.diagnostics import collect_diagnostics
 
@@ -24,8 +23,7 @@ def install_diagnostics_ui_runtime(main_window) -> None:
             text=f"OK: {summary['ok']}   Предупреждения: {summary['warnings']}   Ошибки: {summary['errors']}",
             style="SubTitle.TLabel",
         ).pack(anchor="w", pady=(0, 8))
-        box = ScrolledText(self.content, wrap="word", font=("Consolas", 10), height=25)
-        box.pack(fill="both", expand=True)
+        box = self._result_box()
         for item in report["checks"]:
             marker = {"ok": "OK", "warning": "WARN", "error": "ERROR"}.get(item["level"], "INFO")
             box.insert("end", f"[{marker}] {item['name']}\n  {item['detail']}\n\n")
