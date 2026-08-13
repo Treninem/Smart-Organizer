@@ -3,10 +3,11 @@ from __future__ import annotations
 from collections import Counter
 
 from core.duplicate_insights import duplicate_candidate_groups
+from core.project_templates import summarize_template_matches
 from core.version_manager import version_groups
 
 
-def analyze_local_snapshot(records: list[dict]) -> dict:
+def analyze_local_snapshot(records: list[dict], templates: list[dict] | None = None) -> dict:
     """Explain the latest snapshot using deterministic local rules only.
 
     No network or paid API is used. The function never mutates files and never
@@ -17,6 +18,7 @@ def analyze_local_snapshot(records: list[dict]) -> dict:
     projects = Counter((item.get("project_hint") or "не определён") for item in rows)
     versions = version_groups(rows)
     duplicate_candidates = duplicate_candidate_groups(rows)
+    template_matches = summarize_template_matches(rows, templates or [])
 
     old_paths: set[str] = set()
     newest_paths: set[str] = set()
@@ -50,6 +52,7 @@ def analyze_local_snapshot(records: list[dict]) -> dict:
         },
         "categories": categories.most_common(),
         "projects": projects.most_common(),
+        "template_matches": template_matches,
         "version_groups": versions,
         "duplicate_candidates": duplicate_candidates,
     }
