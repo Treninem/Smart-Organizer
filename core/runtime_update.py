@@ -99,10 +99,10 @@ def download_runtime_bundle(root: Path, asset: dict) -> Path:
 def create_apply_script(root: Path, bundle: Path, process_id: int) -> Path:
     """Create an ASCII PowerShell transaction that runs after the app exits.
 
-    The bundle never contains data/ or logs/. Every replaceable runtime item is
-    moved into one backup before any new file is copied. If any copy or startup
-    preparation step fails, the complete previous runtime is restored so an
-    installation can never be left half old and half new.
+    The bundle never contains data/ or logs/. The unpacked candidate is first
+    executed with --self-test before the installed runtime is touched. After the
+    swap, the installed copy is self-tested again before the backup is removed.
+    Any failure restores the complete previous runtime.
     """
     script = root / ".apply-smart-organizer-runtime.ps1"
     unpack = root / ".runtime-new"
@@ -128,6 +128,10 @@ def create_apply_script(root: Path, bundle: Path, process_id: int) -> Path:
         "if (-not (Test-Path -LiteralPath (Join-Path $unpack 'SmartOrganizer.exe'))) { throw 'SmartOrganizer.exe missing from runtime package' }",
         "if (-not (Test-Path -LiteralPath (Join-Path $unpack '_runtime'))) { throw '_runtime missing from runtime package' }",
         "if (-not (Test-Path -LiteralPath (Join-Path $unpack 'main.py'))) { throw 'main.py missing from runtime package' }",
+        "$env:PYINSTALLER_RESET_ENVIRONMENT = '1'",
+        "Remove-Item Env:_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue",
+        "$candidate = Start-Process -FilePath (Join-Path $unpack 'SmartOrganizer.exe') -ArgumentList '--self-test' -WorkingDirectory $unpack -Wait -PassThru",
+        "if ($candidate.ExitCode -ne 0) { throw ('Candidate runtime self-test failed: ' + $candidate.ExitCode) }",
         "New-Item -ItemType Directory -Force -Path $backup | Out-Null",
         "foreach ($name in $runtimeItems) {",
         "  $old = Join-Path $root $name",
@@ -138,8 +142,8 @@ def create_apply_script(root: Path, bundle: Path, process_id: int) -> Path:
         "  if (-not (Test-Path -LiteralPath (Join-Path $root 'SmartOrganizer.exe'))) { throw 'SmartOrganizer.exe missing after runtime update' }",
         "  if (-not (Test-Path -LiteralPath (Join-Path $root '_runtime'))) { throw '_runtime missing after runtime update' }",
         "  if (-not (Test-Path -LiteralPath (Join-Path $root 'main.py'))) { throw 'main.py missing after runtime update' }",
-        "  $env:PYINSTALLER_RESET_ENVIRONMENT = '1'",
-        "  Remove-Item Env:_PYI_APPLICATION_HOME_DIR -ErrorAction SilentlyContinue",
+        "  $installed = Start-Process -FilePath (Join-Path $root 'SmartOrganizer.exe') -ArgumentList '--self-test' -WorkingDirectory $root -Wait -PassThru",
+        "  if ($installed.ExitCode -ne 0) { throw ('Installed runtime self-test failed: ' + $installed.ExitCode) }",
         "  Start-Process -FilePath (Join-Path $root 'SmartOrganizer.exe') -WorkingDirectory $root",
         "  Start-Sleep -Seconds 2",
         "  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue",
