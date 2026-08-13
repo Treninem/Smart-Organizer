@@ -1,7 +1,10 @@
 {
-  "version": "0.2.10",
+  "version": "0.2.11",
   "channel": "legacy-runtime-bridge",
   "files": [
+    {
+      "path": "main.py"
+    },
     {
       "path": "core/runtime_update.py"
     },
@@ -16,5 +19,5 @@
     "data/",
     "logs/"
   ],
-  "note": "Compatibility bridge for legacy v0.2.x launchers. Dependency order is intentional: install runtime_update.py before auto_update_runtime.py, then bump version.json. The next update check migrates the installation to the verified onedir runtime bundle."
+  "note": "Compatibility bridge for legacy v0.2.x launchers. main.py is installed first so optional modern UI imports can fail safely instead of bricking startup; runtime_update.py and auto_update_runtime.py then migrate to the verified onedir bundle; version.json is last."
 }
