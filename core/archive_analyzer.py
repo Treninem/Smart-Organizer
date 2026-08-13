@@ -14,7 +14,10 @@ def _find_7zip() -> str | None:
     candidates = [
         shutil.which("7z"),
         shutil.which("7z.exe"),
+        shutil.which("7zz"),
+        shutil.which("7zz.exe"),
         r"C:\Program Files\7-Zip\7z.exe",
+        r"C:\Program Files\7-Zip\7zz.exe",
         r"C:\Program Files (x86)\7-Zip\7z.exe",
     ]
     for candidate in candidates:
@@ -31,6 +34,55 @@ def _list_zip(path: Path) -> tuple[list[str], int, str]:
     with zipfile.ZipFile(path) as zf:
         infos = [x for x in zf.infolist() if not x.is_dir()]
         return [x.filename for x in infos], sum(x.file_size for x in infos), "python-zipfile"
+
+
+def _parse_7zip_slt(output: str) -> tuple[list[str], int]:
+    """Parse ``7z l -slt`` output and keep files only.
+
+    Older code counted directory records as archive entries. That made entry
+    counts and extension statistics wrong for RAR/7Z archives with nested
+    folders. 7-Zip exposes ``Folder = +`` and/or directory attributes, so the
+    parser now filters those records explicitly.
+    """
+
+    records: list[dict[str, str]] = []
+    current: dict[str, str] = {}
+
+    def flush() -> None:
+        nonlocal current
+        if current.get("Path"):
+            records.append(current)
+        current = {}
+
+    for raw_line in output.splitlines():
+        line = raw_line.strip("\r\n")
+        if not line.strip():
+            flush()
+            continue
+        if " = " not in line:
+            continue
+        key, value = line.split(" = ", 1)
+        if key == "Path" and current.get("Path"):
+            flush()
+        current[key] = value.strip()
+    flush()
+
+    names: list[str] = []
+    total = 0
+    for record in records:
+        attributes = record.get("Attributes", "").upper()
+        is_folder = record.get("Folder", "").strip() == "+" or attributes.startswith("D")
+        if is_folder:
+            continue
+        name = record.get("Path")
+        if not name:
+            continue
+        names.append(name)
+        try:
+            total += max(0, int(record.get("Size", "0")))
+        except ValueError:
+            pass
+    return names, total
 
 
 def _list_7zip(path: Path) -> tuple[list[str], int, str]:
@@ -52,25 +104,7 @@ def _list_7zip(path: Path) -> tuple[list[str], int, str]:
     )
     if proc.returncode != 0:
         raise RuntimeError((proc.stderr or proc.stdout or "7-Zip error").strip())
-    names: list[str] = []
-    total = 0
-    current_path: str | None = None
-    current_size = 0
-    for line in proc.stdout.splitlines():
-        if line.startswith("Path = "):
-            if current_path is not None:
-                names.append(current_path)
-                total += current_size
-            current_path = line[7:].strip()
-            current_size = 0
-        elif line.startswith("Size = "):
-            try:
-                current_size = int(line[7:].strip())
-            except ValueError:
-                current_size = 0
-    if current_path is not None:
-        names.append(current_path)
-        total += current_size
+    names, total = _parse_7zip_slt(proc.stdout)
     return names, total, "7-Zip"
 
 
@@ -79,6 +113,8 @@ def analyze_archive(path: Path, projects: list[dict]) -> dict:
     ext = path.suffix.lower()
     if ext not in ARCHIVE_EXTENSIONS:
         raise ValueError("Поддерживаются ZIP, RAR и 7Z.")
+    if not path.is_file():
+        raise FileNotFoundError(f"Архив не найден: {path}")
     if ext == ".zip":
         names, total, engine = _list_zip(path)
     else:
