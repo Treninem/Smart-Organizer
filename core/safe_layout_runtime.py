@@ -5,23 +5,42 @@ from tkinter import messagebox
 
 from core.operation_executor import execute_batch
 from core.operation_journal import OperationJournal
-from core.plan_bridge import operations_from_sort_plan
+from core.plan_bridge import operations_from_confirmed_sort_plan
 from core.scanner import scan_tree
 from core.sort_planner import build_sort_plan
 
 
 def safe_executable_items(plan: dict) -> list[dict]:
-    """Return only moves to existing folders accepted by the conservative planner.
-
-    Low-confidence new-folder proposals stay visible as suggestions but can not
-    be executed by the main "Навести порядок" button. This prevents one broad
-    confirmation from moving files into guessed folders.
-    """
+    """Return only high-confidence moves into already existing folders."""
     result: list[dict] = []
     for item in plan.get("items", []):
         if item.get("mode") != "existing":
             continue
+        if item.get("confidence") != "high":
+            continue
         if item.get("requires_confirmation"):
+            continue
+        if not str(item.get("target_dir") or "").strip():
+            continue
+        if not str(item.get("target_path") or "").strip():
+            continue
+        result.append(dict(item))
+    return result
+
+
+def confirmed_creation_items(plan: dict) -> list[dict]:
+    """Return only explicit high-confidence grouping proposals.
+
+    These are different from ordinary low-confidence new-folder guesses: the
+    planner marks them executable only when a strong version-family rule was
+    satisfied, and they still require the user's confirmation in the same main
+    workflow before a directory can be created.
+    """
+    result: list[dict] = []
+    for item in plan.get("items", []):
+        if not item.get("allow_confirmed_creation"):
+            continue
+        if item.get("confidence") != "high":
             continue
         if not str(item.get("target_dir") or "").strip():
             continue
@@ -64,7 +83,16 @@ def install_safe_layout_runtime(main_window) -> None:
         box.delete("1.0", "end")
         summary = plan.get("summary", {})
         executable = safe_executable_items(plan)
-        review = [item for item in plan.get("items", []) if item not in executable]
+        family_creation = confirmed_creation_items(plan)
+        actionable_keys = {
+            (str(item.get("source") or ""), str(item.get("target_path") or ""))
+            for item in executable + family_creation
+        }
+        review = [
+            item
+            for item in plan.get("items", [])
+            if (str(item.get("source") or ""), str(item.get("target_path") or "")) not in actionable_keys
+        ]
 
         box.insert(
             "end",
@@ -72,6 +100,7 @@ def install_safe_layout_runtime(main_window) -> None:
             f"Файлов изучено: {summary.get('files_considered', 0)}\n"
             f"Оставить на месте: {summary.get('already_placed', 0)}\n"
             f"Надёжных перемещений в существующие папки: {len(executable)}\n"
+            f"Подтверждаемых группировок папок-версий: {len(family_creation)}\n"
             f"Определено по вашей текущей раскладке: {summary.get('learned_user_layout_targets', 0)}\n"
             f"Неуверенных предложений, которые НЕ будут выполнены: {len(review)}\n\n",
         )
@@ -82,23 +111,25 @@ def install_safe_layout_runtime(main_window) -> None:
                 "ЗАЩИЩЕНО: выбранная папка похожа на проект. Внутренняя структура проекта не перестраивается.\n\n",
             )
 
-        if executable:
-            box.insert("end", "БУДЕТ МОЖНО ПРИМЕНИТЬ\n")
-            for item in executable[:120]:
+        actionable = executable + family_creation
+        if actionable:
+            box.insert("end", "МОЖНО ПРИМЕНИТЬ ПОСЛЕ ПОДТВЕРЖДЕНИЯ\n")
+            for item in actionable[:120]:
+                kind = "ПАПКА" if item.get("kind") == "folder" else "ФАЙЛ"
                 box.insert(
                     "end",
-                    f"\n• {item.get('source', '')}\n"
+                    f"\n• [{kind}] {item.get('source', '')}\n"
                     f"  → {item.get('target_path', '')}\n"
                     f"  Почему: {_reason_text(item)}\n",
                 )
         else:
-            box.insert("end", "Надёжных перемещений пока нет. Ничего не будет передвинуто.\n")
+            box.insert("end", "Надёжных действий пока нет. Ничего не будет передвинуто.\n")
 
         if review:
             box.insert(
                 "end",
                 "\n\nТОЛЬКО ПОДСКАЗКИ — НЕ ВЫПОЛНЯЮТСЯ\n"
-                "Для этих файлов программа не нашла достаточно надёжного совпадения с вашей существующей раскладкой:\n",
+                "Для этих элементов программа не нашла достаточно надёжного решения:\n",
             )
             for item in review[:80]:
                 box.insert(
@@ -111,23 +142,33 @@ def install_safe_layout_runtime(main_window) -> None:
         box.insert(
             "end",
             "\n\nЗащита: одинаковые main.py/config.json в разных проектах не объединяются; "
-            "папки проектов не перестраиваются; существующие целевые файлы не перезаписываются; "
-            "неуверенные новые папки основной кнопкой не создаются.\n",
+            "внутренности проектов и версий не смешиваются; существующие цели не перезаписываются; "
+            "неуверенные предложения не исполняются.\n",
         )
 
     def organize_current(self) -> None:
-        records = self.db.snapshot_files()
-        if not records:
+        if not self.db.snapshot_files() and not self.db.snapshot_folders():
             self.scan_and_prepare()
             return
 
-        plan = _current_safe_plan(self)
+        # Important: call the current class method, not the local base planner.
+        # Later safety layers add ambiguity checks and whole-folder compaction.
+        plan = self._current_safe_plan()
         self._last_sort_plan = plan
         self._render_plan(plan)
-        executable = safe_executable_items(plan)
-        skipped = len(plan.get("items", [])) - len(executable)
+        existing = safe_executable_items(plan)
+        family_creation = confirmed_creation_items(plan)
+        actionable = existing + family_creation
+        actionable_keys = {
+            (str(item.get("source") or ""), str(item.get("target_path") or "")) for item in actionable
+        }
+        skipped = sum(
+            1
+            for item in plan.get("items", [])
+            if (str(item.get("source") or ""), str(item.get("target_path") or "")) not in actionable_keys
+        )
 
-        if not executable:
+        if not actionable:
             if plan.get("summary", {}).get("protected_project_root"):
                 messagebox.showinfo(
                     "Навести порядок",
@@ -136,39 +177,44 @@ def install_safe_layout_runtime(main_window) -> None:
             else:
                 messagebox.showinfo(
                     "Навести порядок",
-                    "Надёжных перемещений не найдено. Ничего не изменено.\n\n"
-                    "Программа не будет угадывать папку и переносить файл не туда. После следующего анализа она снова изучит вашу текущую раскладку.",
+                    "Надёжных действий не найдено. Ничего не изменено.\n\n"
+                    "Программа не будет угадывать место файла или папки.",
                 )
-            self.status_var.set("Надёжных перемещений нет. Файлы оставлены на месте.")
+            self.status_var.set("Надёжных действий нет. Файлы и папки оставлены на месте.")
             return
 
-        safe_plan = {**plan, "items": executable}
+        safe_plan = {**plan, "items": actionable}
         try:
-            operations = operations_from_sort_plan(safe_plan, existing_only=True)
+            operations = operations_from_confirmed_sort_plan(safe_plan)
         except ValueError as exc:
             messagebox.showwarning(
                 "План остановлен",
                 "Обнаружен конфликт целевых путей. Ничего не перемещено.\n\n" + str(exc),
             )
-            self.status_var.set("План остановлен из-за конфликта. Файлы не изменены.")
+            self.status_var.set("План остановлен из-за конфликта. Файлы и папки не изменены.")
             return
 
-        preview = "\n".join(
-            f"• {item.get('source')}\n  → {item.get('target_path')}\n  {_reason_text(item)}"
-            for item in executable[:8]
-        )
-        if len(executable) > 8:
-            preview += f"\n… и ещё {len(executable) - 8}"
+        file_moves = sum(1 for item in actionable if item.get("kind", "file") != "folder")
+        folder_moves = sum(1 for item in actionable if item.get("kind") == "folder")
+        created_dirs = sum(1 for operation in operations if operation.op_type == "mkdir")
+        preview_lines = []
+        for item in actionable[:10]:
+            kind = "ПАПКА" if item.get("kind") == "folder" else "ФАЙЛ"
+            preview_lines.append(
+                f"• [{kind}] {item.get('source')}\n  → {item.get('target_path')}\n  {_reason_text(item)}"
+            )
+        if len(actionable) > 10:
+            preview_lines.append(f"… и ещё {len(actionable) - 10}")
 
-        note = ""
-        if skipped:
-            note = f"\n\nНеуверенных предложений оставлено на месте: {skipped}."
         confirmed = messagebox.askyesno(
-            "Применить надёжные перемещения",
-            f"Будет перемещено файлов: {len(executable)}.\n"
-            "Новые папки этим действием НЕ создаются.\n\n"
-            f"{preview}{note}\n\n"
-            "Все перемещения относятся к существующей пользовательской структуре, проверяются пакетом и доступны для Undo. Применить?",
+            "Применить проверенный порядок",
+            f"Файлов к перемещению: {file_moves}.\n"
+            f"Целых папок к группировке: {folder_moves}.\n"
+            f"Новых групповых папок: {created_dirs}.\n"
+            f"Неуверенных предложений останется на месте: {skipped}.\n\n"
+            + "\n".join(preview_lines)
+            + "\n\nПапки перемещаются целиком, внутренние main.py/config.json и другие файлы не смешиваются. "
+              "Существующие цели не перезаписываются. Весь пакет проверяется заранее и доступен для Undo. Применить?",
         )
         if not confirmed:
             self.status_var.set("План показан, но не применён.")
@@ -192,17 +238,17 @@ def install_safe_layout_runtime(main_window) -> None:
                 "safe-layout-organize",
                 batch_id,
                 "ok",
-                f"applied={result['applied']}; skipped_uncertain={skipped}",
+                f"applied={result['applied']}; files={file_moves}; folders={folder_moves}; created_dirs={created_dirs}; skipped_uncertain={skipped}",
             )
             self.refresh_dashboard()
             self._render_stable_files_screen()
-            if self.db.snapshot_files():
-                self._render_plan(_current_safe_plan(self))
+            if self.db.snapshot_files() or self.db.snapshot_folders():
+                self._render_plan(self._current_safe_plan())
             self.status_var.set(
-                f"Надёжные перемещения выполнены: {result['applied']}. Неуверенных оставлено на месте: {skipped}. Undo доступен."
+                f"Порядок применён: файлов {file_moves}, папок {folder_moves}. Неуверенных оставлено: {skipped}. Undo доступен."
             )
 
-        self._start_worker("Применяю только надёжные перемещения по вашей компоновке…", work, done)
+        self._start_worker("Применяю только проверенный план порядка…", work, done)
 
     cls._current_safe_plan = _current_safe_plan
     cls._render_plan = _render_plan
