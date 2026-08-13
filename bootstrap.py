@@ -38,9 +38,6 @@ def _self_test(root: Path) -> int:
     import urllib.request as _urllib_test  # noqa: F401
     import uuid as _uuid_test  # noqa: F401
 
-    # The first PyInstaller self-test happens before source modules are staged.
-    # The installed-package smoke test has core/ present, so import the actual
-    # feature graph there to catch missing frozen dependencies before release.
     if (root / "core").is_dir():
         from core import diagnostics as _diagnostics_test  # noqa: F401
         from core import diagnostics_ui_runtime as _diagnostics_ui_test  # noqa: F401
@@ -51,6 +48,7 @@ def _self_test(root: Path) -> int:
         from core import modern_ui_runtime as _modern_ui_test  # noqa: F401
         from core import operation_executor as _operation_executor_test  # noqa: F401
         from core import operation_journal as _operation_journal_test  # noqa: F401
+        from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
 
     return 0
