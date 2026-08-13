@@ -8,6 +8,7 @@ from core.operation_journal import OperationJournal
 from core.plan_bridge import operations_from_confirmed_sort_plan
 from core.scanner import scan_tree
 from core.sort_planner import build_sort_plan
+from core.undo_feedback import SETTINGS_KEY as UNDO_FEEDBACK_KEY, apply_undo_feedback
 
 
 def safe_executable_items(plan: dict) -> list[dict]:
@@ -29,13 +30,7 @@ def safe_executable_items(plan: dict) -> list[dict]:
 
 
 def confirmed_creation_items(plan: dict) -> list[dict]:
-    """Return only explicit high-confidence grouping proposals.
-
-    These are different from ordinary low-confidence new-folder guesses: the
-    planner marks them executable only when a strong version-family rule was
-    satisfied, and they still require the user's confirmation in the same main
-    workflow before a directory can be created.
-    """
+    """Return only explicit high-confidence grouping proposals."""
     result: list[dict] = []
     for item in plan.get("items", []):
         if not item.get("allow_confirmed_creation"):
@@ -67,6 +62,10 @@ def install_safe_layout_runtime(main_window) -> None:
         return
     cls._safe_layout_runtime_installed = True
 
+    def _with_undo_memory(self, plan: dict) -> dict:
+        rules = self.db.get_setting(UNDO_FEEDBACK_KEY, []) or []
+        return apply_undo_feedback(plan, rules)
+
     def _current_safe_plan(self) -> dict:
         return build_sort_plan(
             self.db.snapshot_files(),
@@ -76,6 +75,7 @@ def install_safe_layout_runtime(main_window) -> None:
         )
 
     def _render_plan(self, plan: dict) -> None:
+        plan = _with_undo_memory(self, plan)
         if not hasattr(self, "file_results") or not self.file_results.winfo_exists():
             return
         box = self.file_results
@@ -102,6 +102,7 @@ def install_safe_layout_runtime(main_window) -> None:
             f"Надёжных перемещений в существующие папки: {len(executable)}\n"
             f"Подтверждаемых группировок папок-версий: {len(family_creation)}\n"
             f"Определено по вашей текущей раскладке: {summary.get('learned_user_layout_targets', 0)}\n"
+            f"Заблокировано памятью Undo: {summary.get('blocked_by_undo_memory', 0)}\n"
             f"Неуверенных предложений, которые НЕ будут выполнены: {len(review)}\n\n",
         )
 
@@ -132,18 +133,19 @@ def install_safe_layout_runtime(main_window) -> None:
                 "Для этих элементов программа не нашла достаточно надёжного решения:\n",
             )
             for item in review[:80]:
+                status = "ранее это направление уже отменяли через Undo" if item.get("confidence") == "rejected" else "оставить на месте до более уверенного решения"
                 box.insert(
                     "end",
                     f"\n• {item.get('source', '')}\n"
                     f"  предполагается: {item.get('target_path', '')}\n"
-                    "  статус: оставить на месте до более уверенного решения\n",
+                    f"  статус: {status}\n",
                 )
 
         box.insert(
             "end",
             "\n\nЗащита: одинаковые main.py/config.json в разных проектах не объединяются; "
             "внутренности проектов и версий не смешиваются; существующие цели не перезаписываются; "
-            "неуверенные предложения не исполняются.\n",
+            "неуверенные и ранее отменённые направления не исполняются.\n",
         )
 
     def organize_current(self) -> None:
@@ -151,9 +153,7 @@ def install_safe_layout_runtime(main_window) -> None:
             self.scan_and_prepare()
             return
 
-        # Important: call the current class method, not the local base planner.
-        # Later safety layers add ambiguity checks and whole-folder compaction.
-        plan = self._current_safe_plan()
+        plan = _with_undo_memory(self, self._current_safe_plan())
         self._last_sort_plan = plan
         self._render_plan(plan)
         existing = safe_executable_items(plan)
