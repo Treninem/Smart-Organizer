@@ -89,7 +89,8 @@ class SafeLayoutRuntimeTests(unittest.TestCase):
 
     def test_real_organize_action_uses_latest_class_plan(self):
         source = inspect.getsource(safe_runtime.install_safe_layout_runtime)
-        self.assertIn("plan = self._current_safe_plan()", source)
+        self.assertIn("self._current_safe_plan()", source)
+        self.assertIn("_with_undo_memory(self, self._current_safe_plan())", source)
         self.assertNotIn("plan = _current_safe_plan(self)\n        self._last_sort_plan", source)
 
 
