@@ -1,68 +1,81 @@
 # Smart-Organizer
 
-Local-first Windows assistant for file, project and version management.
+Local-first Windows assistant for practical file, project and version organization.
 
 ## Principles
-- Local-first architecture.
-- No paid APIs.
-- User data and learned knowledge stay on the PC.
-- GitHub stores code, build automation and update metadata, not the user's database.
+- Local-first: no paid APIs and no cloud database requirement.
+- `data/`, `logs/` and learned `knowledge.db` stay on the user's PC and are preserved by updates.
 - Existing user folder trees and real placement habits have priority over generated templates.
 - Existing project internals are protected from automatic rearrangement.
-- Analysis and planning never silently change user files.
-- Confirmed filesystem operations are journaled, conflict-checked and reversible.
+- A filesystem change happens only after a visible plan and explicit confirmation.
+- Existing destinations are never overwritten.
+- Applied batches are journaled and reversible with Undo.
 
-## v0.2.13
+## v0.2.14
 
-The organizer now follows the user's real existing layout instead of relying mainly on generic folder names. During every scan it learns how folders are already being used from the files stored directly inside them: category, extension, project association and archive usage. This evidence outranks names such as `Images`, `Archives`, `src` or `app`.
+This release focuses on making the main **Навести порядок** action useful instead of merely showing analysis.
 
-Important safety changes:
-- a loose archive is preferentially routed to the folder where the user already keeps archives;
-- folders with an existing history of the same category/extension/project receive higher confidence;
-- generic folder names alone are weak evidence and cannot pull files into unrelated project trees;
-- nested project folders are protected from receiving unrelated loose files;
-- files already inside a project tree stay where the user put them;
-- selecting a project root freezes its internal structure;
-- identical `main.py`, `config.json`, images, libraries and other files in different projects are not treated as removable duplicates;
-- exact duplicate detection remains limited to a safe project scope and still requires full SHA-256;
-- an already planned duplicate quarantine is revalidated before execution;
-- manual update checks now compare against the exact version of the published release commit instead of relying only on potentially stale raw metadata.
+### Real organization workflow
+1. Scan the selected Desktop/folder/drive read-only.
+2. Learn how the user already groups archives, images, documents, project files and other content.
+3. Build one plan with source, destination, confidence and explanation.
+4. Block ambiguous or medium-confidence automatic moves.
+5. Show files/folders that are safe enough to apply and keep uncertain suggestions read-only.
+6. Preflight the whole confirmed batch before the first change.
+7. Apply without overwriting existing paths.
+8. Rescan and keep full Undo information.
+
+### Existing-layout learning
+Folder names alone are not trusted. Real direct contents of a folder are stronger evidence: category, extension, archive use and recognized project association. If two destinations receive nearly equal evidence, the move is stopped instead of guessed.
+
+Undo now acts as negative local feedback: when the user reverses a normal move, the exact same source → destination pair is remembered locally and is not offered again as an automatic action.
+
+### Whole-folder compaction
+The organizer can now recognize obvious top-level project folders and move the **whole folder** into an already existing user container such as `Боты`, `Minecraft` or `Программы`. It never flattens or merges the project's internals. If more than one container looks valid, nothing is moved.
+
+A loose root-level project file is routed into a project folder only when the destination is unambiguous. Several version folders without a clear canonical project folder cause the file to stay in place.
+
+### Version-folder families
+Three or more sibling folders with the same artifact identity and explicit versions can be recognized as one version family. If an existing unversioned family folder exists, it is preferred. Otherwise Smart Organizer may propose one new family container, but creation is allowed only by this explicit high-confidence rule and still requires confirmation. Version folders are moved whole; their `main.py`, `config.json`, assets and other internal files are never merged.
+
+### Duplicate safety
+- Similar names or equal sizes are only candidates.
+- Exact duplicate status requires full SHA-256 after a quick content prefilter.
+- Exact duplicate grouping is constrained by conservative project/tree scope.
+- Identical `main.py`, `config.json`, images, libraries or other files in different projects remain independent even when byte-for-byte identical.
+- Duplicate quarantine is revalidated immediately before execution and remains reversible.
 
 ## Implemented
 - modern dark Windows GUI with rounded buttons and black/white/purple/turquoise/cyan palette;
+- simplified stable navigation centered around the main organization workflow;
 - live CPU, RAM, disk and current network traffic counters;
-- real Windows Desktop and Downloads resolution, including redirected folders on another drive;
-- scanning of Desktop, Downloads, selected folders and drive roots;
-- local SQLite knowledge database in `data/knowledge.db`;
-- read-only recursive scanning with safe system-folder filtering;
-- text folder-tree view for the latest scan;
-- file type classification for images, documents, code, archives, drawings/CAD, video, audio and programs;
-- project hints with token-boundary matching to avoid substring collisions;
-- known project summaries plus generic templates for Telegram/VK Mini Apps, Minecraft servers, games, websites, production systems and CAD/drawings;
-- local Smart Brain overview with categories, project matches, project-template hints, newest/old version candidates and copy-name candidates;
-- version grouping with protection against ordinary counters, years and calendar dates being misclassified as versions;
-- duplicate candidate analysis by normalized name and by size without falsely calling them exact duplicates;
-- exact duplicate detection with quick content prefiltering followed by full SHA-256 verification;
-- ZIP analysis in Python and RAR/7Z listing through 7-Zip without extraction;
-- organization planning that learns from the user's current folder usage and prefers existing destinations supported by real evidence;
-- persistent reversible-operation journal in SQLite;
-- reviewed journal batches apply only after explicit confirmation;
-- whole-batch preflight checks sources, destination conflicts and parent folders before the first filesystem change;
-- applied journal batches can be undone in reverse order; Undo refuses to overwrite occupied paths or remove folders containing untracked user content;
-- local installation diagnostics integrated into the UI;
-- atomic full-runtime updates using `SmartOrganizer-runtime.zip` with SHA-256 verification;
-- update candidate self-test before replacement and installed-runtime self-test before old-runtime backup removal;
-- legacy v0.2.x migration bridge installs a fail-safe `main.py` first so a missing frozen dependency cannot brick startup;
-- automatic idle restart after a verified runtime update;
-- update process preserves `data/` and `logs/`;
-- Windows CI runs core tests, frozen dependency tests, a real installed-package import test and a real GUI screen-construction smoke test before publishing a runtime release.
+- real Windows Desktop and Downloads resolution, including redirected folders;
+- read-only recursive scanning of Desktop, Downloads, chosen folders and drive roots;
+- safe system-folder filtering only where appropriate;
+- local SQLite knowledge, settings, action history and operation journal;
+- file classification for images, documents, code, archives, drawings/CAD, video, audio and programs;
+- boundary-safe project recognition and generic project templates;
+- local Smart Brain overview without paid/network AI;
+- version recognition protected against ordinary counters, years and calendar dates;
+- existing-layout scoring plus ambiguity blocking;
+- whole project-folder compaction into existing user containers;
+- conservative version-folder family grouping;
+- exact duplicate detection using quick signature plus full SHA-256 inside project scope;
+- ZIP analysis and RAR/7Z listing without extraction;
+- whole-batch conflict/source/target/parent preflight;
+- reversible move, rename, approved mkdir and quarantine operations;
+- Undo protection against occupied paths and untracked content;
+- local memory of exact destinations rejected through Undo;
+- installation diagnostics;
+- atomic PyInstaller onedir runtime updates with candidate and installed-runtime self-tests;
+- legacy v0.2.x recovery bridge;
+- preservation of `data/` and `logs/` during runtime replacement;
+- Windows CI with core tests, frozen import self-test, real installation smoke test and GUI construction test before rolling release publication.
 
 ## Safety model
 
-Smart Organizer does **not** silently reorganize or delete user files. Scanning, duplicate-candidate analysis, exact duplicate detection, archive inspection, Smart Brain analysis and organization planning are read-only. A filesystem change can happen only from a persisted journal batch after a separate confirmation in the UI.
+Smart Organizer is deliberately biased toward false negatives rather than destructive guesses. If confidence is insufficient, the item stays where it is. Automatic execution requires a high-confidence existing destination; the only new-folder exception is a separately confirmed, high-confidence version-family grouping rule.
 
-The executor does not overwrite an existing destination. A batch is preflighted before the first change; a failed batch is not silently resumed. Undo performs its own safety checks before reversing applied operations.
+Project folders are treated as structural units. Their internal files are not redistributed merely because another project contains files with the same names. Exact duplicates are never inferred from names alone.
 
-A similar name or equal size is only a duplicate candidate. Exact duplicate status requires a full SHA-256 match inside the same safe project scope. Files belonging to different projects are independent even if their contents are byte-for-byte identical.
-
-Local learned knowledge, `data/knowledge.db`, local rule/project files and logs are intentionally excluded from GitHub and from runtime replacement.
+Local learned knowledge and Undo feedback are stored on the PC and are not committed to GitHub.
