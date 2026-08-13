@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 CATEGORY_EXTENSIONS = {
@@ -22,20 +23,35 @@ def category_for(path: Path) -> str:
     return "Другое"
 
 
+def _search_text(value: str) -> str:
+    """Normalize paths/phrases into boundary-safe searchable text."""
+    normalized = re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE)
+    return " " + " ".join(normalized.split()) + " "
+
+
+def _contains_term(search_text: str, term: str) -> bool:
+    needle = _search_text(str(term)).strip()
+    return bool(needle) and f" {needle} " in search_text
+
+
 def project_hint(path: Path, projects: list[dict]) -> str | None:
-    text = str(path).lower().replace("_", " ").replace("-", " ")
+    text = _search_text(str(path))
     scored: list[tuple[int, str]] = []
     for project in projects:
         score = 0
+        project_name = str(project.get("name", ""))
+        normalized_name = _search_text(project_name).strip()
         for keyword in project.get("keywords", []):
-            kw = keyword.lower()
-            if kw and kw in text:
-                score += 3 if kw == project.get("name", "").lower() else 1
+            kw = str(keyword)
+            if _contains_term(text, kw):
+                score += 3 if _search_text(kw).strip() == normalized_name else 1
         for alias in project.get("aliases", []):
-            if alias.lower() in text:
+            if _contains_term(text, str(alias)):
                 score += 2
+        if _contains_term(text, project_name):
+            score += 4
         if score:
-            scored.append((score, project["name"]))
+            scored.append((score, project_name))
     if not scored:
         return None
     scored.sort(reverse=True)
