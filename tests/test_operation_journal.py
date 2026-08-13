@@ -38,6 +38,15 @@ class OperationJournalTests(unittest.TestCase):
         self.assertEqual(str(source), rows[0]["source"])
         self.assertEqual(str(target), rows[0]["target"])
 
+    def test_batch_ids_are_unique_and_do_not_require_uuid_module(self):
+        first = self.journal.plan_batch([ReversibleOperation("mkdir", str(Path(self.temp.name) / "A"))])
+        second = self.journal.plan_batch([ReversibleOperation("mkdir", str(Path(self.temp.name) / "B"))])
+        self.assertEqual(32, len(first))
+        self.assertEqual(32, len(second))
+        self.assertNotEqual(first, second)
+        source = Path("core/operation_journal.py").read_text(encoding="utf-8")
+        self.assertNotIn("import uuid", source)
+
     def test_applied_move_produces_reverse_undo_plan(self):
         operation = ReversibleOperation("move", r"D:\Inbox\book.pdf", r"D:\Books\book.pdf", "classified")
         batch = self.journal.plan_batch([operation])
