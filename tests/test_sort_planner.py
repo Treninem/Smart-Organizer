@@ -110,6 +110,45 @@ class SortPlannerTests(unittest.TestCase):
         self.assertEqual(result["summary"]["protected_project_root"], 1)
         self.assertEqual(result["summary"]["already_placed"], 2)
 
+    def test_loose_unknown_photo_never_enters_nested_project_images(self):
+        files = [{
+            "path": r"D:\Desktop\holiday.jpg",
+            "parent": r"D:\Desktop",
+            "name": "holiday.jpg",
+            "category": "Изображения",
+            "project_hint": None,
+        }]
+        folders = [
+            {"path": r"D:\Desktop", "name": "Desktop", "depth": 0},
+            {"path": r"D:\Desktop\Project-B", "name": "Project-B", "depth": 1},
+            {"path": r"D:\Desktop\Project-B\images", "name": "images", "depth": 2},
+        ]
+        result = build_sort_plan(files, folders, [], r"D:\Desktop")
+        self.assertEqual(len(result["items"]), 1)
+        self.assertNotIn("Project-B", result["items"][0]["target_dir"])
+        self.assertEqual(result["items"][0]["mode"], "proposed")
+
+    def test_known_project_loose_file_requires_project_alias_in_destination(self):
+        projects = [{
+            "name": "VoxLyra",
+            "type": "Telegram/VK bot + Mini App",
+            "aliases": ["Vox Lyra"],
+            "keywords": ["telegram", "bot"],
+        }]
+        files = [{
+            "path": r"D:\Desktop\VoxLyra_v2.zip",
+            "parent": r"D:\Desktop",
+            "name": "VoxLyra_v2.zip",
+            "category": "Архивы",
+            "project_hint": "VoxLyra",
+        }]
+        folders = [
+            {"path": r"D:\Desktop\AnotherTelegramBot\releases", "name": "releases", "depth": 2},
+            {"path": r"D:\Desktop\VoxLyra\releases", "name": "releases", "depth": 2},
+        ]
+        result = build_sort_plan(files, folders, projects, r"D:\Desktop")
+        self.assertEqual(result["items"][0]["target_dir"], r"D:\Desktop\VoxLyra\releases")
+
 
 if __name__ == "__main__":
     unittest.main()
