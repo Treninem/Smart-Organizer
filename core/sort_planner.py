@@ -3,11 +3,36 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from .project_manager import suggest_destination
+from .classifier import project_hint
+from .project_manager import INBOX_ROOT_NAMES, suggest_destination
+
+PROJECT_ROOT_MARKERS = {
+    "main.py", "bot.py", "requirements.txt", "pyproject.toml", "package.json",
+    "server.properties", "project.godot", "cargo.toml", "go.mod", "pom.xml",
+    "dockerfile", "compose.yml", "docker-compose.yml",
+}
 
 
 def _norm(path: str) -> str:
     return os.path.normcase(os.path.normpath(path))
+
+
+def _scan_root_looks_like_project(files: list[dict], projects: list[dict], scan_root: str | None) -> bool:
+    if not scan_root:
+        return False
+    root = Path(scan_root)
+    if root.anchor and root == Path(root.anchor):
+        return False
+    if root.name.strip().casefold() in INBOX_ROOT_NAMES:
+        return False
+    if project_hint(root, projects):
+        return True
+    for record in files:
+        parent = str(record.get("parent") or "")
+        name = str(record.get("name") or "").casefold()
+        if _norm(parent) == _norm(str(root)) and name in PROJECT_ROOT_MARKERS:
+            return True
+    return False
 
 
 def build_sort_plan(
@@ -18,17 +43,21 @@ def build_sort_plan(
 ) -> dict:
     """Build a read-only organization plan.
 
-    The planner never mutates the filesystem. Existing user folders always have
-    priority. Suggestions that require creating a new folder are explicitly
-    marked as confirmation-required so a future executor cannot silently grow
-    a parallel folder tree.
+    Loose files in inbox-like areas can be routed into existing user folders.
+    Files already inside project trees are preserved. If the selected scan root
+    itself looks like a project, its internal layout is frozen as well.
     """
     items: list[dict] = []
     already_placed = 0
     existing_targets = 0
     proposed_targets = 0
+    protected_project_root = _scan_root_looks_like_project(files, projects, scan_root)
 
     for record in files:
+        if protected_project_root:
+            already_placed += 1
+            continue
+
         suggestion = suggest_destination(record, folders, projects, scan_root)
         source = str(record.get("path") or "")
         target_dir = str(suggestion.get("path") or "")
@@ -71,6 +100,7 @@ def build_sort_plan(
             "already_placed": already_placed,
             "existing_folder_targets": existing_targets,
             "new_folder_targets": proposed_targets,
+            "protected_project_root": 1 if protected_project_root else 0,
             "filesystem_changes_performed": 0,
         },
         "safe_mode": True,
