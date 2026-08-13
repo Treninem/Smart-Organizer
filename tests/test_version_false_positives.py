@@ -12,13 +12,23 @@ class VersionFalsePositiveTests(unittest.TestCase):
         self.assertIsNone(detect_version("chapter 12.txt"))
         self.assertIsNone(detect_version("invoice_153.pdf"))
 
+    def test_calendar_date_is_not_a_version(self):
+        self.assertIsNone(detect_version("backup 2026.08.13.zip"))
+        self.assertIsNone(detect_version("Фото 2024.12.31.jpg"))
+        self.assertEqual("backup 2026 08 13", artifact_key("backup 2026.08.13.zip"))
+
+    def test_explicit_date_shaped_version_is_supported(self):
+        info = detect_version("release v2026.08.13.zip")
+        self.assertIsNotNone(info)
+        self.assertEqual("v2026.8.13", info.normalized)
+
     def test_explicit_single_component_version_is_supported(self):
         info = detect_version("SmartOrganizer v3.zip")
         self.assertIsNotNone(info)
         self.assertEqual("v3", info.normalized)
 
     def test_dotted_and_qualified_versions_are_supported(self):
-        self.assertEqual("v1.15.9", detect_version("VoxLyra 1.15.9.zip").normalized)
+        self.assertEqual("v1.15.9", detect_version("Reader 1.15.9.zip").normalized)
         self.assertEqual("v12-beta2", detect_version("build 12-beta2.zip").normalized)
 
     def test_artifact_key_keeps_year_but_removes_real_version(self):
