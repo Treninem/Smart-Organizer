@@ -74,6 +74,7 @@ def main() -> None:
         ("core.stable_workflow_runtime", "install_stable_workflow_runtime", "стабильный сценарий"),
         ("core.safe_layout_runtime", "install_safe_layout_runtime", "защита пользовательской компоновки"),
         ("core.maximum_safety_runtime", "install_maximum_safety_runtime", "усиленная компоновка"),
+        ("core.final_safety_runtime", "install_final_safety_runtime", "финальный контроль плана"),
     ]
     for module_name, function_name, label in installers:
         try:
