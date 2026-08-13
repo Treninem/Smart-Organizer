@@ -7,17 +7,23 @@ from core.project_templates import summarize_template_matches
 from core.version_manager import version_groups
 
 
-def analyze_local_snapshot(records: list[dict], templates: list[dict] | None = None) -> dict:
+def analyze_local_snapshot(
+    records: list[dict],
+    templates: list[dict] | None = None,
+    scan_root: str | None = None,
+) -> dict:
     """Explain the latest snapshot using deterministic local rules only.
 
     No network or paid API is used. The function never mutates files and never
     labels a file for deletion without an exact SHA-256 confirmation elsewhere.
+    Duplicate hints are also isolated by project scope, so identical/common
+    files belonging to different projects are not treated as copies.
     """
     rows = [dict(item) for item in records]
     categories = Counter((item.get("category") or "не определено") for item in rows)
     projects = Counter((item.get("project_hint") or "не определён") for item in rows)
     versions = version_groups(rows)
-    duplicate_candidates = duplicate_candidate_groups(rows)
+    duplicate_candidates = duplicate_candidate_groups(rows, scan_root=scan_root)
     template_matches = summarize_template_matches(rows, templates or [])
 
     old_paths: set[str] = set()
