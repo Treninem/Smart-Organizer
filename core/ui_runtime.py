@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from tkinter import messagebox, ttk
 
+from core.operation_executor import OperationExecutionError, execute_batch, undo_batch
 from core.operation_journal import OperationJournal
 from core.plan_bridge import operations_from_sort_plan
 from core.sort_planner import build_sort_plan
@@ -15,17 +16,35 @@ def _walk_widgets(widget):
 
 
 def install_ui_runtime(main_window) -> None:
-    """Small UI upgrades kept separate from the original window implementation."""
+    """Safe UI upgrades kept separate from the original window implementation."""
 
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_ui_runtime_installed", False):
         return
     cls._ui_runtime_installed = True
 
+    original_init = cls.__init__
     original_show_home = cls.show_home
     original_show_files = cls.show_files
     original_show_settings = cls.show_settings
     original_apply_monitor_sample = cls._apply_monitor_sample
+
+    def __init__(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        self._last_sort_plan = None
+        # The legacy window says "analysis only". v0.2.9+ can execute only a
+        # reviewed journal batch and only after an explicit confirmation.
+        for widget in _walk_widgets(self):
+            if not isinstance(widget, ttk.Label):
+                continue
+            try:
+                text = str(widget.cget("text"))
+            except Exception:
+                continue
+            if text == "ТОЛЬКО АНАЛИЗ":
+                widget.configure(text="ТОЛЬКО ПО ПОДТВЕРЖДЕНИЮ")
+            elif text == "Не удаляет, не переносит\nи не перестраивает папки.":
+                widget.configure(text="Сам ничего не удаляет.\nПеремещения — только из журнала.")
 
     def show_home(self) -> None:
         original_show_home(self)
@@ -41,8 +60,8 @@ def install_ui_runtime(main_window) -> None:
                                     "• Атомарное обновление полного runtime-пакета с SHA-256\n"
                                     "• Реальный Рабочий стол Windows, включая перенаправление на другой диск\n"
                                     "• Безопасный план порядка: существующие папки имеют приоритет\n"
-                                    "• Точные дубликаты SHA-256, версии и ZIP/RAR/7Z без распаковки\n"
-                                    "• Локальный журнал обратимых операций; data/ и logs/ не заменяются"
+                                    "• Журнал: применение только после подтверждения + реальный Undo\n"
+                                    "• Точные дубликаты SHA-256, версии и ZIP/RAR/7Z без распаковки"
                                 )
                             )
                             break
@@ -139,13 +158,82 @@ def install_ui_runtime(main_window) -> None:
         batch_id = journal.plan_batch(operations, label="safe-sort-preview")
         self.db.log_action("sort-plan-journal", batch_id, "ok", f"planned={len(operations)}; filesystem_changes=0")
         self.status_var.set(
-            f"В журнал записано {len(operations)} безопасных операций. Файлы не перемещались."
+            f"В журнал записано {len(operations)} операций. Для выполнения откройте Настройки → Журнал безопасности и Undo."
         )
         if hasattr(self, "file_results"):
             self.file_results.insert(
                 "end",
-                f"\nПакет журнала: {batch_id}\nЗаписано операций: {len(operations)}\nФайловая система не изменена.\n",
+                f"\nПакет журнала: {batch_id}\nЗаписано операций: {len(operations)}\n"
+                "Файлы пока не изменены. Выполнение требует отдельного подтверждения в Настройках.\n",
             )
+
+    def _latest_batch(self, wanted_status: str):
+        entries = self.db.operation_entries(limit=5000)
+        for row in entries:
+            if row.get("status") != wanted_status:
+                continue
+            batch_id = row.get("batch_id")
+            if not batch_id:
+                continue
+            batch = self.db.operation_entries(batch_id=batch_id, limit=5000)
+            matching = [item for item in batch if item.get("status") == wanted_status]
+            if matching:
+                return batch_id, matching
+        return None, []
+
+    def apply_latest_planned_batch(self) -> None:
+        batch_id, entries = _latest_batch(self, "planned")
+        if not batch_id:
+            messagebox.showinfo("Журнал", "Нет запланированного пакета для выполнения.")
+            return
+        preview = "\n".join(
+            f"• {item['source']}\n  → {item.get('target') or '—'}" for item in entries[:8]
+        )
+        if len(entries) > 8:
+            preview += f"\n… и ещё {len(entries) - 8}"
+        confirmed = messagebox.askyesno(
+            "Подтвердить перемещения",
+            f"Будет выполнено операций: {len(entries)}.\n\n{preview}\n\n"
+            "Smart Organizer НЕ перезаписывает существующие файлы и остановится при первом конфликте. "
+            "Применить этот пакет?",
+        )
+        if not confirmed:
+            self.status_var.set("Выполнение пакета отменено пользователем. Файлы не изменены.")
+            return
+
+        def work():
+            return execute_batch(OperationJournal(self.db), batch_id)
+
+        def done(result):
+            self.db.log_action("journal-apply", batch_id, "ok", f"applied={result['applied']}")
+            self.status_var.set(
+                f"Пакет применён: {result['applied']} операций. При необходимости используйте Undo в Настройках."
+            )
+            self.show_settings()
+
+        self._start_worker(f"Выполняю подтверждённый пакет {batch_id[:8]}…", work, done)
+
+    def undo_latest_applied_batch(self) -> None:
+        batch_id, entries = _latest_batch(self, "applied")
+        if not batch_id:
+            messagebox.showinfo("Undo", "Нет применённого пакета, который можно отменить.")
+            return
+        if not messagebox.askyesno(
+            "Undo",
+            f"Отменить последний применённый пакет ({len(entries)} операций)?\n\n"
+            "Undo также никогда не перезаписывает существующий путь. Если исходное место уже занято, отмена остановится.",
+        ):
+            return
+
+        def work():
+            return undo_batch(OperationJournal(self.db), batch_id)
+
+        def done(result):
+            self.db.log_action("journal-undo", batch_id, "ok", f"undone={result['undone']}")
+            self.status_var.set(f"Undo выполнен: отменено операций {result['undone']}.")
+            self.show_settings()
+
+        self._start_worker(f"Undo пакета {batch_id[:8]}…", work, done)
 
     def show_settings(self) -> None:
         original_show_settings(self)
@@ -157,12 +245,11 @@ def install_ui_runtime(main_window) -> None:
             except Exception:
                 continue
             if "Эти ограничения специально сохраняются на этапе v0.2.0." in text:
-                widget.configure(
-                    text=text.replace(
-                        "Эти ограничения специально сохраняются на этапе v0.2.0.",
-                        f"Эти ограничения сохраняются в безопасном режиме v{main_window.APP_VERSION}.",
-                    )
+                text = text.replace(
+                    "Эти ограничения специально сохраняются на этапе v0.2.0.",
+                    f"Автоперемещение остаётся выключенным. Ручное выполнение журнала доступно только после подтверждения в v{main_window.APP_VERSION}.",
                 )
+                widget.configure(text=text)
 
         entries = self.db.operation_entries(limit=500)
         statuses = Counter(item["status"] for item in entries)
@@ -176,25 +263,29 @@ def install_ui_runtime(main_window) -> None:
                 f"применено: {statuses.get('applied', 0)}   "
                 f"отменено: {statuses.get('undone', 0)}   "
                 f"ошибок: {statuses.get('failed', 0)}\n"
-                "Планирование не меняет файлы. Кнопка «В журнал» в разделе «Файлы» записывает только "
-                "перемещения в уже существующие папки; предложения новых папок остаются только предпросмотром."
+                "Планирование не меняет файлы. Выполнение возможно только отдельной кнопкой и после подтверждения. "
+                "Существующие целевые файлы никогда не перезаписываются; при конфликте пакет останавливается."
             ),
             wraplength=760,
             justify="left",
         ).pack(anchor="w")
+        buttons = ttk.Frame(journal)
+        buttons.pack(fill="x", pady=(10, 0))
+        ttk.Button(buttons, text="▶ Применить последний пакет", command=self.apply_latest_planned_batch).pack(side="left")
+        ttk.Button(buttons, text="↶ Undo последнего пакета", command=self.undo_latest_applied_batch).pack(side="left", padx=(8, 0))
 
     def _apply_monitor_sample(self, sample: dict) -> None:
         original_apply_monitor_sample(self, sample)
-        # The counters show current traffic, not an ISP speed-test result. The
-        # explicit wording prevents an idle 0 bit/s value from looking like a
-        # broken internet connection.
         self.monitor_vars["net"].set(
             f"Трафик сейчас ↓ {sample['download_text']}   ↑ {sample['upload_text']}"
         )
 
+    cls.__init__ = __init__
     cls.show_home = show_home
     cls.show_files = show_files
     cls.preview_sort_plan = preview_sort_plan
     cls.record_sort_plan = record_sort_plan
+    cls.apply_latest_planned_batch = apply_latest_planned_batch
+    cls.undo_latest_applied_batch = undo_latest_applied_batch
     cls._apply_monitor_sample = _apply_monitor_sample
     cls.show_settings = show_settings
