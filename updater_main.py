@@ -8,6 +8,7 @@ from core.paths import app_root
 from core.runtime_update import (
     create_apply_script,
     download_runtime_bundle,
+    ensure_runtime_release_ready,
     fetch_runtime_manifest,
     fetch_runtime_release,
     find_runtime_asset,
@@ -62,6 +63,7 @@ def main() -> int:
 
     manifest = fetch_runtime_manifest()
     release = fetch_runtime_release()
+    ensure_runtime_release_ready(manifest, release)
     asset = find_runtime_asset(release)
     if not asset:
         raise RuntimeError("SmartOrganizer-runtime.zip is not published")
