@@ -8,7 +8,8 @@ import subprocess
 import urllib.request
 from pathlib import Path
 
-RUNTIME_MANIFEST_URL = "https://raw.githubusercontent.com/Treninem/Smart-Organizer/main/runtime-manifest.json"
+REPO_RAW = "https://raw.githubusercontent.com/Treninem/Smart-Organizer"
+RUNTIME_MANIFEST_URL = f"{REPO_RAW}/main/runtime-manifest.json"
 RELEASE_API = "https://api.github.com/repos/Treninem/Smart-Organizer/releases/tags/auto-latest"
 RUNTIME_ASSET = "SmartOrganizer-runtime.zip"
 USER_AGENT = "Smart-Organizer-Runtime-Updater"
@@ -66,6 +67,36 @@ def find_runtime_asset(release: dict) -> dict | None:
         if asset.get("name") == RUNTIME_ASSET:
             return asset
     return None
+
+
+def fetch_release_version(release: dict, timeout: int = 8) -> str:
+    """Read version.json from the exact commit targeted by the rolling release."""
+    target = str(release.get("target_commitish") or "").strip()
+    if not target:
+        return ""
+    url = f"{REPO_RAW}/{target}/version.json"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return str(payload.get("version", ""))
+
+
+def runtime_release_ready(manifest: dict, release: dict, release_version: str) -> bool:
+    expected = str(manifest.get("version", "")).strip()
+    target = str(release.get("target_commitish") or "").strip()
+    return bool(expected and target and release_version.strip() == expected and find_runtime_asset(release))
+
+
+def ensure_runtime_release_ready(manifest: dict, release: dict, timeout: int = 8) -> None:
+    """Reject the publication race where main manifest is newer than release assets."""
+    release_version = fetch_release_version(release, timeout=timeout)
+    if not runtime_release_ready(manifest, release, release_version):
+        expected = str(manifest.get("version", "?"))
+        actual = release_version or "не определена"
+        raise RuntimeError(
+            f"Runtime {expected} ещё публикуется: версия готового пакета {actual}. "
+            "Старая сборка не будет установлена поверх новой метаинформации."
+        )
 
 
 def download_runtime_bundle(root: Path, asset: dict) -> Path:
