@@ -75,8 +75,6 @@ def main() -> None:
 
         install_auto_update_runtime(main_window)
     except Exception as exc:
-        # The legacy base window still contains the source updater. Keeping the
-        # application open lets that recovery path repair a partial migration.
         startup_warnings.append(f"автообновление runtime: {exc}")
 
     try:
@@ -91,8 +89,6 @@ def main() -> None:
 
         install_ui_runtime(main_window)
     except Exception as exc:
-        # UI extensions are deliberately optional during a legacy migration.
-        # A missing bundled module must not brick the updater or the base app.
         startup_warnings.append(f"расширения интерфейса: {exc}")
 
     try:
@@ -108,6 +104,15 @@ def main() -> None:
         install_full_features_runtime(main_window)
     except Exception as exc:
         startup_warnings.append(f"дополнительный анализ: {exc}")
+
+    # Final UI layer deliberately replaces the button-heavy experimental file
+    # screen with one stable workflow: scan -> review -> apply -> undo.
+    try:
+        from core.stable_workflow_runtime import install_stable_workflow_runtime
+
+        install_stable_workflow_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"стабильный сценарий: {exc}")
 
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
