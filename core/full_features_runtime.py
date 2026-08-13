@@ -5,6 +5,7 @@ from tkinter import messagebox, ttk
 from core.duplicate_insights import duplicate_candidate_groups
 from core.folder_tree import render_folder_tree
 from core.local_ai import analyze_local_snapshot
+from core.project_templates import summarize_template_matches
 
 
 def _human_size(value: int) -> str:
@@ -24,6 +25,7 @@ def install_full_features_runtime(main_window) -> None:
     cls._full_features_runtime_installed = True
 
     original_show_files = cls.show_files
+    original_show_projects = cls.show_projects
 
     def _ensure_results(self):
         if not hasattr(self, "file_results") or not self.file_results.winfo_exists():
@@ -88,7 +90,7 @@ def install_full_features_runtime(main_window) -> None:
         if not records:
             messagebox.showinfo("Smart Brain", "Сначала выполните анализ папки или диска.")
             return
-        report = analyze_local_snapshot(records)
+        report = analyze_local_snapshot(records, self.knowledge.get("templates", []))
         summary = report["summary"]
         box = _ensure_results(self)
         box.configure(state="normal")
@@ -112,6 +114,10 @@ def install_full_features_runtime(main_window) -> None:
         box.insert("end", "\nПРОЕКТЫ\n")
         for name, count in report["projects"]:
             box.insert("end", f"  • {name}: {count}\n")
+        if report["template_matches"]:
+            box.insert("end", "\nШАБЛОНЫ ТИПОВ ПРОЕКТОВ\n")
+            for name, count in report["template_matches"]:
+                box.insert("end", f"  • {name}: признаков в {count} файлах/путях\n")
         if report["version_groups"]:
             box.insert("end", "\nВЕРСИИ ДЛЯ ПРОВЕРКИ\n")
             for group in report["version_groups"][:60]:
@@ -127,6 +133,30 @@ def install_full_features_runtime(main_window) -> None:
         )
         self.status_var.set("Smart Brain построил локальный обзор. Изменений файловой системы: 0.")
 
+    def show_project_templates(self) -> None:
+        templates = self.knowledge.get("templates", [])
+        if not hasattr(self, "project_results") or not self.project_results.winfo_exists():
+            original_show_projects(self)
+        box = self.project_results
+        box.configure(state="normal")
+        box.delete("1.0", "end")
+        box.insert(
+            "end",
+            "ШАБЛОНЫ РАСПОЗНАВАНИЯ ПРОЕКТОВ\n"
+            "Шаблоны помогают определить тип неизвестного проекта, но никогда не перестраивают существующие папки.\n\n",
+        )
+        matches = dict(summarize_template_matches(self.db.snapshot_files(), templates))
+        for template in templates:
+            name = template.get("name", "Без имени")
+            box.insert(
+                "end",
+                f"{name} [{template.get('type', '')}]\n"
+                f"Совпадений в последнем снимке: {matches.get(name, 0)}\n"
+                f"Ключевые слова: {', '.join(template.get('keywords', []))}\n"
+                f"Маркеры: {', '.join(template.get('markers', []))}\n\n",
+            )
+        self.status_var.set(f"Доступно шаблонов проектов: {len(templates)}.")
+
     def show_files(self) -> None:
         original_show_files(self)
         extra = ttk.Frame(self.content)
@@ -139,7 +169,18 @@ def install_full_features_runtime(main_window) -> None:
         ttk.Button(extra, text="🔎 Кандидаты дублей", command=self.show_duplicate_candidates).pack(side="left", padx=4)
         ttk.Button(extra, text="🧠 Умный обзор", command=self.show_smart_brain_overview).pack(side="left", padx=4)
 
+    def show_projects(self) -> None:
+        original_show_projects(self)
+        controls = ttk.Frame(self.content)
+        try:
+            controls.pack(fill="x", pady=(8, 0), before=self.project_results)
+        except Exception:
+            controls.pack(fill="x", pady=(8, 0))
+        ttk.Button(controls, text="🧩 Шаблоны типов проектов", command=self.show_project_templates).pack(side="left")
+
     cls.show_folder_tree = show_folder_tree
     cls.show_duplicate_candidates = show_duplicate_candidates
     cls.show_smart_brain_overview = show_smart_brain_overview
+    cls.show_project_templates = show_project_templates
     cls.show_files = show_files
+    cls.show_projects = show_projects
