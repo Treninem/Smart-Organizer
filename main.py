@@ -83,6 +83,13 @@ def main() -> None:
     except Exception as exc:
         startup_warnings.append(f"диагностика: {exc}")
 
+    try:
+        from core.full_features_runtime import install_full_features_runtime
+
+        install_full_features_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"дополнительный анализ: {exc}")
+
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
         app.status_var.set(
