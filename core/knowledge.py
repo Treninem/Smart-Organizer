@@ -13,6 +13,8 @@ def knowledge_items(payload: dict) -> list[dict]:
     items: list[dict] = []
     for project in payload.get("projects", []):
         items.append({"kind": "project", "name": project["name"], **project})
+    for template in payload.get("templates", []):
+        items.append({"kind": "template", "name": template["name"], **template})
     for rule in payload.get("rules", []):
         items.append({"kind": "rule", "name": rule["id"], **rule})
     return items
