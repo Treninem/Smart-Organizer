@@ -83,6 +83,33 @@ class SortPlannerTests(unittest.TestCase):
         self.assertEqual(result["items"], [])
         self.assertEqual(result["summary"]["already_placed"], 1)
 
+    def test_selected_project_root_with_main_py_is_frozen(self):
+        files = [
+            {
+                "path": r"D:\Project-A\main.py",
+                "parent": r"D:\Project-A",
+                "name": "main.py",
+                "category": "Код",
+                "project_hint": None,
+            },
+            {
+                "path": r"D:\Project-A\logo.png",
+                "parent": r"D:\Project-A",
+                "name": "logo.png",
+                "category": "Изображения",
+                "project_hint": None,
+            },
+        ]
+        folders = [
+            {"path": r"D:\Project-A", "name": "Project-A", "depth": 0},
+            {"path": r"D:\Project-A\src", "name": "src", "depth": 1},
+            {"path": r"D:\Project-A\images", "name": "images", "depth": 1},
+        ]
+        result = build_sort_plan(files, folders, [], r"D:\Project-A")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["summary"]["protected_project_root"], 1)
+        self.assertEqual(result["summary"]["already_placed"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()
