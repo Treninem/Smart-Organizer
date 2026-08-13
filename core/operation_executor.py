@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
+from core.duplicates import duplicate_scope, sha256_file
 from core.operation_journal import ReversibleOperation, same_path, validate_no_destructive_conflicts
 
 
@@ -28,6 +29,52 @@ def _ensure_free_target(source: Path, target: Path) -> None:
         raise OperationExecutionError(f"Target parent does not exist: {target.parent}")
 
 
+def _verify_duplicate_quarantine_proof(operation: ReversibleOperation) -> None:
+    """Re-check old/new duplicate quarantine plans immediately before use.
+
+    Real duplicate-quarantine plans record the canonical file in the reason.
+    When such proof is present, the executor refuses to quarantine across a
+    project/parent boundary and recomputes full SHA-256 for both files. This
+    also protects already-planned batches created by older Smart Organizer
+    versions before project-scope duplicate isolation existed.
+    """
+    marker = "exact sha-256 duplicate of "
+    reason = str(operation.reason or "")
+    lowered = reason.casefold()
+    marker_index = lowered.find(marker)
+    if marker_index < 0:
+        return
+
+    canonical_text = reason[marker_index + len(marker):].strip()
+    if not canonical_text:
+        raise OperationExecutionError("Duplicate quarantine proof has no canonical file")
+
+    source = Path(operation.source)
+    canonical = Path(canonical_text)
+    if not source.is_file():
+        raise OperationExecutionError(f"Duplicate source is not a file: {source}")
+    if not canonical.is_file():
+        raise OperationExecutionError(f"Canonical duplicate file is missing: {canonical}")
+
+    source_scope = duplicate_scope({"path": str(source), "name": source.name})
+    canonical_scope = duplicate_scope({"path": str(canonical), "name": canonical.name})
+    if source_scope != canonical_scope:
+        raise OperationExecutionError(
+            "Refusing duplicate quarantine across project scopes: "
+            f"{source} <> {canonical}"
+        )
+
+    try:
+        source_hash = sha256_file(source)
+        canonical_hash = sha256_file(canonical)
+    except (OSError, PermissionError) as exc:
+        raise OperationExecutionError(f"Could not re-check duplicate SHA-256: {exc}") from exc
+    if source_hash != canonical_hash:
+        raise OperationExecutionError(
+            f"Duplicate contents changed after planning; quarantine cancelled: {source}"
+        )
+
+
 def preflight_operation(operation: ReversibleOperation) -> None:
     """Validate the current filesystem state without changing it."""
 
@@ -48,6 +95,7 @@ def preflight_operation(operation: ReversibleOperation) -> None:
         if not operation.target:
             raise OperationExecutionError("Quarantine operation requires an explicit target")
         _ensure_safe_source(source)
+        _verify_duplicate_quarantine_proof(operation)
         _ensure_free_target(source, Path(operation.target))
         return
     raise OperationExecutionError(f"Unsupported operation: {operation.op_type}")
@@ -74,6 +122,8 @@ def _preflight_batch_operation(operation: ReversibleOperation, created_dirs: set
         if not operation.target:
             raise OperationExecutionError(f"{operation.op_type} requires a target")
         _ensure_safe_source(source)
+        if operation.op_type == "delete-to-quarantine":
+            _verify_duplicate_quarantine_proof(operation)
         target = Path(operation.target)
         if same_path(str(source), str(target)):
             raise OperationExecutionError(f"Source and target are the same: {source}")
