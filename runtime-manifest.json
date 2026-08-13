@@ -1,8 +1,11 @@
 {
-  "version": "0.2.13",
+  "version": "0.2.14",
   "channel": "stable",
   "release_tag": "auto-latest",
   "asset": "SmartOrganizer-runtime.zip",
   "packaging": "onedir",
-  "preserve": ["data/", "logs/"]
+  "preserve": [
+    "data/",
+    "logs/"
+  ]
 }
