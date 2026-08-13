@@ -22,17 +22,11 @@ def _human_size(value: int) -> str:
 
 
 def install_stable_workflow_runtime(main_window) -> None:
-    """Replace button-heavy file screens with one reliable guided workflow."""
+    """Replace button-heavy experimental screens with one reliable workflow."""
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_stable_workflow_runtime_installed", False):
         return
     cls._stable_workflow_runtime_installed = True
-
-    original_show_settings = cls.show_settings
-
-    def _result_box(self):
-        box = self._result_box()
-        return box
 
     def _current_plan(self) -> dict:
         return build_sort_plan(
@@ -49,15 +43,23 @@ def install_stable_workflow_runtime(main_window) -> None:
         box.configure(state="normal")
         box.delete("1.0", "end")
         summary = plan["summary"]
+        protected = bool(summary.get("protected_project_root"))
         box.insert(
             "end",
             "ПЛАН ПОРЯДКА\n\n"
             f"Файлов изучено: {summary['files_considered']}\n"
-            f"Уже лежат подходяще: {summary['already_placed']}\n"
+            f"Оставить на месте: {summary['already_placed']}\n"
             f"Можно переместить: {summary['moves_suggested']}\n"
             f"В существующие папки: {summary['existing_folder_targets']}\n"
-            f"Нужно создать папки: {summary['new_folder_targets']}\n\n",
+            f"Нужно создать папки: {summary['new_folder_targets']}\n",
         )
+        if protected:
+            box.insert(
+                "end",
+                "\nВыбранная папка похожа на корень проекта. Её внутренняя структура защищена и не будет перестраиваться.\n",
+            )
+        box.insert("end", "\n")
+
         for item in plan.get("items", [])[:120]:
             mode = "существующая папка" if item.get("mode") == "existing" else "новая папка после подтверждения"
             box.insert(
@@ -70,9 +72,16 @@ def install_stable_workflow_runtime(main_window) -> None:
             box.insert("end", f"… ещё {len(plan['items']) - 120} предложений\n")
         box.insert(
             "end",
-            "\nВажно: программа не переносит файлы между разными проектными деревьями только из-за одинаковых имён вроде main.py. "
-            "Перед реальным перемещением весь пакет проверяется ещё раз.\n",
+            "\nЗащита: существующие проектные деревья не перестраиваются; одинаковые main.py/config.json в разных проектах "
+            "не объединяются; целевые файлы никогда не перезаписываются.\n",
         )
+
+    def _rescan_snapshot(self, root_text: str | None):
+        if not root_text:
+            return None
+        refreshed = scan_tree(Path(root_text), self.knowledge.get("projects", []))
+        self.db.replace_scan(refreshed.folders, refreshed.files)
+        return refreshed
 
     def scan_and_prepare(self) -> None:
         selected = filedialog.askdirectory(title="Выберите папку или диск, где нужно навести порядок")
@@ -85,12 +94,7 @@ def install_stable_workflow_runtime(main_window) -> None:
             self.db.replace_scan(result.folders, result.files)
             self.db.set_setting("last_scan_root", str(root))
             self.db.log_action("scan", str(root), "ok", json.dumps(result.summary, ensure_ascii=False))
-            plan = build_sort_plan(
-                result.files,
-                result.folders,
-                self.knowledge.get("projects", []),
-                str(root),
-            )
+            plan = build_sort_plan(result.files, result.folders, self.knowledge.get("projects", []), str(root))
             return result.summary, plan
 
         def done(payload):
@@ -100,7 +104,7 @@ def install_stable_workflow_runtime(main_window) -> None:
             self._render_stable_files_screen()
             self._render_plan(plan)
             self.status_var.set(
-                f"Анализ завершён: {summary['files']} файлов, {summary['folders']} папок. Теперь можно применить план порядка."
+                f"Анализ завершён: {summary['files']} файлов, {summary['folders']} папок. План готов."
             )
 
         self._start_worker(f"Анализирую {root}…", work, done)
@@ -110,12 +114,18 @@ def install_stable_workflow_runtime(main_window) -> None:
         if not records:
             self.scan_and_prepare()
             return
+
         plan = _current_plan(self)
         self._last_sort_plan = plan
         self._render_plan(plan)
-        summary = plan["summary"]
         if not plan.get("items"):
-            messagebox.showinfo("Навести порядок", "Перемещать нечего: файлы уже лежат подходяще.")
+            if plan["summary"].get("protected_project_root"):
+                messagebox.showinfo(
+                    "Навести порядок",
+                    "Эта папка распознана как проект. Smart Organizer не перестраивает рабочую структуру проекта.",
+                )
+            else:
+                messagebox.showinfo("Навести порядок", "Перемещать нечего: файлы уже лежат подходяще.")
             return
 
         try:
@@ -125,6 +135,7 @@ def install_stable_workflow_runtime(main_window) -> None:
                 "План остановлен",
                 "Обнаружен конфликт целевых путей. Ничего не перемещено.\n\n" + str(exc),
             )
+            self.status_var.set("План остановлен из-за конфликта. Файлы не изменены.")
             return
 
         mkdir_count = sum(1 for item in operations if item.op_type == "mkdir")
@@ -140,8 +151,8 @@ def install_stable_workflow_runtime(main_window) -> None:
             "Применить порядок",
             f"Будет перемещено файлов: {move_count}.\n"
             f"Будет создано папок: {mkdir_count}.\n\n{preview}\n\n"
-            "Файлы из разных проектов не объединяются. Существующие файлы не перезаписываются. "
-            "Все действия попадут в журнал и их можно отменить через Undo. Применить?",
+            "Существующая структура проектов защищена. Существующие файлы не перезаписываются. "
+            "Все действия журналируются и доступны для Undo. Применить?",
         )
         if not confirmed:
             self.status_var.set("План показан, но не применён.")
@@ -149,21 +160,21 @@ def install_stable_workflow_runtime(main_window) -> None:
 
         journal = OperationJournal(self.db)
         batch_id = journal.plan_batch(operations, label="confirmed-organize")
+        root_text = self.db.get_setting("last_scan_root")
 
         def work():
-            return execute_batch(journal, batch_id)
+            result = execute_batch(journal, batch_id)
+            refreshed = _rescan_snapshot(self, root_text)
+            return result, refreshed
 
-        def done(result):
+        def done(payload):
+            result, _refreshed = payload
             self.db.log_action("organize-apply", batch_id, "ok", f"applied={result['applied']}")
-            self.status_var.set(f"Порядок применён: выполнено операций {result['applied']}. Undo доступен.")
-            # Refresh the snapshot so the screen reflects the actual filesystem.
-            root_text = self.db.get_setting("last_scan_root")
-            if root_text:
-                refreshed = scan_tree(Path(root_text), self.knowledge.get("projects", []))
-                self.db.replace_scan(refreshed.folders, refreshed.files)
+            self.refresh_dashboard()
             self._render_stable_files_screen()
             if self.db.snapshot_files():
                 self._render_plan(_current_plan(self))
+            self.status_var.set(f"Порядок применён: выполнено операций {result['applied']}. Undo доступен.")
 
         self._start_worker("Применяю подтверждённый план…", work, done)
 
@@ -183,7 +194,7 @@ def install_stable_workflow_runtime(main_window) -> None:
                 box.insert(
                     "end",
                     "Точных безопасных дубликатов не найдено.\n\n"
-                    "Одинаковые main.py, config.json, изображения и другие файлы в разных проектах специально не считаются удаляемыми копиями.",
+                    "Одинаковые main.py, config.json, изображения и другие файлы в разных проектах специально считаются независимыми.",
                 )
                 self.status_var.set("Безопасных точных дубликатов не найдено.")
                 return
@@ -194,7 +205,7 @@ def install_stable_workflow_runtime(main_window) -> None:
                     "end",
                     f"Оригинал: {group['canonical']}\n"
                     f"SHA-256: {group['sha256']}\n"
-                    f"Точные копии внутри одного проекта/дерева:\n  - "
+                    f"Точные копии внутри одного проектного контекста:\n  - "
                     + "\n  - ".join(group["duplicates"])
                     + "\n\n",
                 )
@@ -219,19 +230,20 @@ def install_stable_workflow_runtime(main_window) -> None:
             return
         if not messagebox.askyesno("Undo", "Отменить последний применённый пакет действий?"):
             return
+        root_text = self.db.get_setting("last_scan_root")
 
         def work():
-            return undo_batch(OperationJournal(self.db), batch_id)
+            result = undo_batch(OperationJournal(self.db), batch_id)
+            refreshed = _rescan_snapshot(self, root_text)
+            return result, refreshed
 
-        def done(result):
-            self.status_var.set(f"Undo выполнен: отменено операций {result['undone']}.")
-            root_text = self.db.get_setting("last_scan_root")
-            if root_text:
-                refreshed = scan_tree(Path(root_text), self.knowledge.get("projects", []))
-                self.db.replace_scan(refreshed.folders, refreshed.files)
+        def done(payload):
+            result, _refreshed = payload
+            self.refresh_dashboard()
             self._render_stable_files_screen()
             if self.db.snapshot_files():
                 self._render_plan(_current_plan(self))
+            self.status_var.set(f"Undo выполнен: отменено операций {result['undone']}.")
 
         self._start_worker("Отменяю последний пакет…", work, done)
 
@@ -245,7 +257,7 @@ def install_stable_workflow_runtime(main_window) -> None:
             text=(
                 f"Область: {root or 'не выбрана'}\n"
                 f"Изучено: {counts.get('files', 0)} файлов, {counts.get('folders', 0)} папок.\n"
-                "Один рабочий процесс: анализ → план → подтверждение → выполнение → Undo."
+                "Рабочий процесс: анализ → план → подтверждение → выполнение → Undo."
             ),
             wraplength=860,
             justify="left",
@@ -272,7 +284,7 @@ def install_stable_workflow_runtime(main_window) -> None:
         ttk.Label(self.content, text="Smart Organizer", style="Title.TLabel").pack(anchor="w", pady=(4, 4))
         ttk.Label(
             self.content,
-            text="Не набор тестовых кнопок, а один рабочий сценарий для наведения порядка.",
+            text="Один рабочий сценарий вместо набора тестовых кнопок.",
             style="SubTitle.TLabel",
         ).pack(anchor="w", pady=(0, 14))
 
@@ -300,30 +312,52 @@ def install_stable_workflow_runtime(main_window) -> None:
         info.insert(
             "end",
             "Как работает:\n"
-            "1. Программа изучает существующую структуру.\n"
-            "2. Файл внутри Project-A не отправляется в Project-B из-за общей папки src/app/images.\n"
-            "3. Новая папка создаётся только когда подходящей пользовательской папки нет и только после подтверждения.\n"
-            "4. Перед первым перемещением проверяется весь пакет целиком.\n"
-            "5. Любой применённый пакет можно отменить через Undo.\n"
-            "6. Точные дубликаты ищутся по SHA-256 только внутри одного проектного контекста.\n",
+            "1. Изучает существующую структуру.\n"
+            "2. Не перестраивает рабочие папки проектов.\n"
+            "3. Свободные файлы направляет в подходящие существующие папки.\n"
+            "4. Если подходящей папки нет — предлагает создать новую и ждёт подтверждения.\n"
+            "5. Перед первым перемещением проверяет весь пакет.\n"
+            "6. Любой применённый пакет можно отменить через Undo.\n"
+            "7. Дубликаты проверяются по SHA-256 и только внутри одного проектного контекста.\n",
         )
 
     def show_settings(self) -> None:
-        original_show_settings(self)
-        note = ttk.LabelFrame(self.content, text="Стабильный режим", padding=12)
-        note.pack(fill="x", pady=(14, 0))
+        self.clear_content()
+        ttk.Label(self.content, text="Настройки", style="Title.TLabel").pack(anchor="w", pady=(4, 8))
         ttk.Label(
-            note,
+            self.content,
             text=(
-                "Автоматическое удаление отключено. Основной сценарий — анализ, подтверждённое наведение порядка и Undo. "
-                "Файлы разных проектов не объединяются как дубликаты."
+                f"Версия: v{main_window.APP_VERSION}\n"
+                "Защита проектных папок: ВКЛЮЧЕНА\n"
+                "Перезапись существующих файлов: ЗАПРЕЩЕНА\n"
+                "Автоматическое удаление: ВЫКЛЮЧЕНО\n"
+                "Undo: ВКЛЮЧЕН\n"
+                f"Автопроверка обновлений: {'ВКЛЮЧЕНА' if getattr(self, 'auto_update_enabled', True) else 'ВЫКЛЮЧЕНА'}"
             ),
-            wraplength=780,
             justify="left",
-        ).pack(anchor="w")
+        ).pack(anchor="w", pady=(0, 14))
+
+        actions = ttk.LabelFrame(self.content, text="Служебные действия", padding=12)
+        actions.pack(fill="x")
+        if hasattr(self, "check_updates_manual"):
+            ttk.Button(actions, text="Проверить обновления", command=self.check_updates_manual).pack(side="left", padx=(0, 8))
+        if hasattr(self, "show_diagnostics"):
+            ttk.Button(actions, text="Диагностика", command=self.show_diagnostics).pack(side="left", padx=8)
+        ttk.Button(actions, text="Undo последнего пакета", command=self.undo_last_stable).pack(side="left", padx=8)
+
+        ttk.Label(
+            self.content,
+            text=(
+                "Основной режим намеренно простой: программа не делает скрытых изменений. "
+                "Организация выполняется одной командой «Навести порядок» после показа плана и подтверждения."
+            ),
+            wraplength=820,
+            justify="left",
+        ).pack(anchor="w", pady=(16, 0))
 
     cls._current_plan = _current_plan
     cls._render_plan = _render_plan
+    cls._rescan_snapshot = _rescan_snapshot
     cls.scan_and_prepare = scan_and_prepare
     cls.organize_current = organize_current
     cls.find_exact_duplicates_stable = find_exact_duplicates_stable
