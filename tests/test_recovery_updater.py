@@ -26,12 +26,14 @@ class RecoveryUpdaterTests(unittest.TestCase):
                 patch.object(updater_main, "app_root", return_value=root),
                 patch.object(updater_main, "fetch_runtime_manifest", return_value={"version": "0.2.7"}),
                 patch.object(updater_main, "fetch_runtime_release", return_value=release),
+                patch.object(updater_main, "ensure_runtime_release_ready") as ready,
                 patch.object(updater_main, "find_runtime_asset", return_value=release["assets"][0]),
                 patch.object(updater_main, "download_runtime_bundle", return_value=bundle) as download,
                 patch.object(updater_main, "create_apply_script", return_value=script) as create_script,
                 patch.object(updater_main, "launch_apply_script") as launch,
             ):
                 self.assertEqual(updater_main.main(), 0)
+            ready.assert_called_once()
             self.assertEqual(download.call_count, 1)
             called_root, called_asset = download.call_args.args
             self.assertTrue(Path(called_root).samefile(root))
@@ -55,6 +57,7 @@ class RecoveryUpdaterTests(unittest.TestCase):
                 patch.object(updater_main, "app_root", return_value=download_dir),
                 patch.object(updater_main, "fetch_runtime_manifest", return_value={"version": "0.2.7"}),
                 patch.object(updater_main, "fetch_runtime_release", return_value=release),
+                patch.object(updater_main, "ensure_runtime_release_ready"),
                 patch.object(updater_main, "find_runtime_asset", return_value=release["assets"][0]),
                 patch.object(updater_main, "download_runtime_bundle", return_value=bundle) as download,
                 patch.object(updater_main, "create_apply_script", return_value=script),
@@ -72,6 +75,7 @@ class RecoveryUpdaterTests(unittest.TestCase):
             patch("sys.argv", ["updater.exe", "--check"]),
             patch.object(updater_main, "fetch_runtime_manifest", return_value={"version": "0.2.7"}),
             patch.object(updater_main, "fetch_runtime_release", return_value=release),
+            patch.object(updater_main, "ensure_runtime_release_ready"),
             patch.object(updater_main, "find_runtime_asset", return_value=release["assets"][0]),
             patch.object(updater_main, "download_runtime_bundle") as download,
             patch.object(updater_main, "launch_apply_script") as launch,
