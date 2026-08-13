@@ -26,6 +26,11 @@ TYPE_ROOT_HINTS = {
     "Windows desktop utility": "Programs",
 }
 
+INBOX_ROOT_NAMES = {
+    "desktop", "рабочий стол", "downloads", "download", "загрузки",
+    "inbox", "входящие", "unsorted", "разобрать", "разное", "temp", "tmp",
+}
+
 
 def _norm(path: str | Path) -> str:
     return os.path.normcase(os.path.normpath(str(path)))
@@ -40,12 +45,7 @@ def _is_within(path: str | Path, root: str | Path) -> bool:
 
 
 def _structural_scope(record: dict, scan_root: str | None) -> Path | None:
-    """Return the first user folder below scan_root when a file is already nested.
-
-    Files directly in the scan root are treated as inbox-like items and may be
-    routed into a recognized project. Files already inside Project-A stay inside
-    Project-A unless a recognized project match explicitly points elsewhere.
-    """
+    """Return a conservative project-tree boundary for already nested files."""
     if not scan_root:
         return None
     source = Path(str(record.get("path") or ""))
@@ -55,6 +55,9 @@ def _structural_scope(record: dict, scan_root: str | None) -> Path | None:
     except (ValueError, OSError):
         return None
     if len(relative.parts) < 2:
+        return None
+    first = str(relative.parts[0]).strip().casefold()
+    if first in INBOX_ROOT_NAMES:
         return None
     return root / relative.parts[0]
 
@@ -86,9 +89,6 @@ def rank_existing_folders(
         lower_path = path.lower()
         lower_name = name.lower()
 
-        # Strong safety boundary: an unknown file that already belongs to one
-        # top-level project tree cannot be moved into another project merely
-        # because both contain generic folders such as src/app/images/docs.
         within_source_scope = bool(source_scope and _is_within(path, source_scope))
         project_evidence = False
         if project:
@@ -112,7 +112,6 @@ def rank_existing_folders(
                 score += 6
         if version and version.normalized.lower() in lower_path.replace("_", "-"):
             score += 8
-        # Being the current parent is not evidence that it is the best destination.
         if _norm(path) == _norm(parent) and score:
             score += 3
         if score:
@@ -133,8 +132,6 @@ def suggest_destination(record: dict, folders: list[dict], projects: list[dict],
     source_scope = _structural_scope(record, scan_root)
     base = source_scope or Path(scan_root or record.get("parent") or ".")
     if project:
-        # If the file is already inside a user project tree, keep any generated
-        # fallback inside that tree instead of building a parallel global tree.
         if source_scope:
             proposed = base / "Smart-Organizer_Sorted" / (record.get("category") or "Other")
         else:
