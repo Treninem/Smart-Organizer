@@ -1,1 +1,5 @@
-{"version":"0.2.13","channel":"stable","safe_mode":true}
+{
+  "version": "0.2.14",
+  "channel": "stable",
+  "safe_mode": true
+}
