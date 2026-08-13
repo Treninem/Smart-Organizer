@@ -17,6 +17,22 @@ def _norm(path: str) -> str:
     return os.path.normcase(os.path.normpath(path))
 
 
+def _effective_scan_root(folders: list[dict], scan_root: str | None) -> str | None:
+    """Prefer the exact canonical root recorded by the scanner.
+
+    Windows may expose one directory through both a long path and an 8.3 short
+    path. Using the scanner's depth-0 path keeps project-boundary comparisons
+    stable even when the picker supplied another spelling of the same path.
+    """
+    for folder in folders:
+        try:
+            if int(folder.get("depth", -1)) == 0 and folder.get("path"):
+                return str(folder["path"])
+        except (TypeError, ValueError):
+            continue
+    return scan_root
+
+
 def _scan_root_looks_like_project(files: list[dict], projects: list[dict], scan_root: str | None) -> bool:
     if not scan_root:
         return False
@@ -47,18 +63,19 @@ def build_sort_plan(
     Files already inside project trees are preserved. If the selected scan root
     itself looks like a project, its internal layout is frozen as well.
     """
+    effective_root = _effective_scan_root(folders, scan_root)
     items: list[dict] = []
     already_placed = 0
     existing_targets = 0
     proposed_targets = 0
-    protected_project_root = _scan_root_looks_like_project(files, projects, scan_root)
+    protected_project_root = _scan_root_looks_like_project(files, projects, effective_root)
 
     for record in files:
         if protected_project_root:
             already_placed += 1
             continue
 
-        suggestion = suggest_destination(record, folders, projects, scan_root)
+        suggestion = suggest_destination(record, folders, projects, effective_root)
         source = str(record.get("path") or "")
         target_dir = str(suggestion.get("path") or "")
         current_parent = str(record.get("parent") or Path(source).parent)
@@ -104,4 +121,5 @@ def build_sort_plan(
             "filesystem_changes_performed": 0,
         },
         "safe_mode": True,
+        "scan_root": effective_root,
     }
