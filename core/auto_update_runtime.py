@@ -37,12 +37,7 @@ def _worker_active(app) -> bool:
 
 
 def install_auto_update_runtime(main_window) -> None:
-    """Install periodic full-runtime updates and automatic idle restart.
-
-    v0.2.7+ updates the complete Windows runtime as one verified ZIP. This keeps
-    SmartOrganizer.exe, its PyInstaller runtime and Python modules in sync and
-    avoids one-file _MEI temporary-directory failures.
-    """
+    """Install periodic full-runtime updates and automatic idle restart."""
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_auto_update_runtime_installed", False):
         return
@@ -117,8 +112,9 @@ def install_auto_update_runtime(main_window) -> None:
 
     def _finish_update_check(self, result: dict, manual: bool) -> None:
         self._update_thread = None
+        latest = str(result.get("latest") or result.get("version") or "?")
         if result.get("updated"):
-            version = str(result.get("version", "?"))
+            version = str(result.get("version", latest))
             self._pending_runtime_zip = result.get("runtime_zip")
             self.db.log_action("runtime-update", version, "ok", "verified runtime bundle ready; auto_restart=1")
             self._restart_pending = True
@@ -132,8 +128,12 @@ def install_auto_update_runtime(main_window) -> None:
                 messagebox.showwarning("Обновления", f"Не удалось проверить GitHub:\n{result['error']}")
             self.status_var.set("Не удалось проверить обновления.")
         elif manual:
-            self.status_var.set("Установлена актуальная версия.")
-            messagebox.showinfo("Обновления", "Установлена актуальная версия.")
+            current = str(main_window.APP_VERSION)
+            self.status_var.set(f"Установлена актуальная версия v{current}. GitHub runtime: v{latest}.")
+            messagebox.showinfo(
+                "Обновления",
+                f"Установлена актуальная версия.\n\nНа компьютере: v{current}\nОпубликованный runtime: v{latest}",
+            )
         self._schedule_next_update()
 
     def _start_update_check(self, manual: bool = False) -> None:
@@ -146,7 +146,7 @@ def install_auto_update_runtime(main_window) -> None:
             self._schedule_next_update(1)
             return
         if manual:
-            self.status_var.set("Проверяю обновление Smart Organizer…")
+            self.status_var.set("Проверяю точную опубликованную версию Smart Organizer…")
 
         def run() -> None:
             result = {"updated": False}
@@ -154,7 +154,8 @@ def install_auto_update_runtime(main_window) -> None:
                 root = app_root()
                 manifest = fetch_runtime_manifest()
                 release = fetch_runtime_release()
-                ensure_runtime_release_ready(manifest, release)
+                published_version = ensure_runtime_release_ready(manifest, release)
+                result["latest"] = published_version
                 if runtime_update_needed(root, main_window.APP_VERSION, manifest, release):
                     asset = find_runtime_asset(release)
                     if not asset:
@@ -162,7 +163,7 @@ def install_auto_update_runtime(main_window) -> None:
                     runtime_zip = download_runtime_bundle(root, asset)
                     result.update(
                         updated=True,
-                        version=str(manifest.get("version", "?")),
+                        version=published_version,
                         runtime_zip=runtime_zip,
                     )
             except Exception as exc:
@@ -228,8 +229,9 @@ def install_auto_update_runtime(main_window) -> None:
         ttk.Label(
             frame,
             text=(
-                "Обновляется весь runtime-пакет целиком. После проверки версии релиза и SHA-256 программа сама ждёт окончания работы, "
-                "заменяет runtime и перезапускается. Локальные data/ и logs/ не затрагиваются."
+                "Проверяется точная версия опубликованного release-коммита, затем SHA-256. "
+                "После проверки программа ждёт окончания работы, заменяет runtime и перезапускается. "
+                "Локальные data/ и logs/ не затрагиваются."
             ),
             wraplength=720,
             justify="left",
