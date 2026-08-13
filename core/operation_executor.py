@@ -10,6 +10,10 @@ class OperationExecutionError(RuntimeError):
     pass
 
 
+def _normalized_path(path: Path | str) -> str:
+    return str(Path(path)).replace("\\", "/").rstrip("/").casefold()
+
+
 def _ensure_safe_source(path: Path) -> None:
     if not path.exists():
         raise OperationExecutionError(f"Source does not exist: {path}")
@@ -46,6 +50,40 @@ def preflight_operation(operation: ReversibleOperation) -> None:
         _ensure_safe_source(source)
         _ensure_free_target(source, Path(operation.target))
         return
+    raise OperationExecutionError(f"Unsupported operation: {operation.op_type}")
+
+
+def _preflight_batch_operation(operation: ReversibleOperation, created_dirs: set[str]) -> None:
+    """Preflight one batch item, allowing parents created earlier in this batch."""
+    operation.validate()
+    source = Path(operation.source)
+
+    if operation.op_type == "mkdir":
+        if source.exists():
+            raise OperationExecutionError(f"Directory target already exists: {source}")
+        parent_key = _normalized_path(source.parent)
+        if not source.parent.exists() and parent_key not in created_dirs:
+            raise OperationExecutionError(f"Directory parent does not exist: {source.parent}")
+        source_key = _normalized_path(source)
+        if source_key in created_dirs:
+            raise OperationExecutionError(f"Directory is planned more than once: {source}")
+        created_dirs.add(source_key)
+        return
+
+    if operation.op_type in {"move", "rename", "delete-to-quarantine"}:
+        if not operation.target:
+            raise OperationExecutionError(f"{operation.op_type} requires a target")
+        _ensure_safe_source(source)
+        target = Path(operation.target)
+        if same_path(str(source), str(target)):
+            raise OperationExecutionError(f"Source and target are the same: {source}")
+        if target.exists():
+            raise OperationExecutionError(f"Target already exists: {target}")
+        parent_key = _normalized_path(target.parent)
+        if not target.parent.exists() and parent_key not in created_dirs:
+            raise OperationExecutionError(f"Target parent does not exist: {target.parent}")
+        return
+
     raise OperationExecutionError(f"Unsupported operation: {operation.op_type}")
 
 
@@ -96,12 +134,12 @@ def execute_batch(journal, batch_id: str) -> dict:
     ]
     validate_no_destructive_conflicts(operations)
 
-    # Preflight every operation before the first mutation. This catches missing
-    # sources, occupied targets and missing parents without leaving a half-moved
-    # batch in the common failure cases.
+    # Preflight every operation before the first mutation. A target parent may
+    # be a directory explicitly planned earlier in the same reviewed batch.
+    created_dirs: set[str] = set()
     for row, operation in zip(planned, operations):
         try:
-            preflight_operation(operation)
+            _preflight_batch_operation(operation, created_dirs)
         except Exception as exc:
             journal.mark_failed(int(row["id"]), str(exc))
             raise OperationExecutionError(f"Batch {batch_id} preflight failed: {exc}") from exc
