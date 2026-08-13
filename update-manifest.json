@@ -1,10 +1,20 @@
 {
-  "version": "0.0.0",
-  "channel": "legacy-disabled",
-  "files": [],
+  "version": "0.2.10",
+  "channel": "legacy-runtime-bridge",
+  "files": [
+    {
+      "path": "core/runtime_update.py"
+    },
+    {
+      "path": "core/auto_update_runtime.py"
+    },
+    {
+      "path": "version.json"
+    }
+  ],
   "preserve": [
     "data/",
     "logs/"
   ],
-  "note": "Legacy source updates are disabled. Smart Organizer v0.2.7+ uses runtime-manifest.json and the verified SmartOrganizer-runtime.zip bundle."
+  "note": "Compatibility bridge for legacy v0.2.x launchers. Dependency order is intentional: install runtime_update.py before auto_update_runtime.py, then bump version.json. The next update check migrates the installation to the verified onedir runtime bundle."
 }
