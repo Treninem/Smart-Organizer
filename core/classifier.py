@@ -25,7 +25,7 @@ def category_for(path: Path) -> str:
 
 def _search_text(value: str) -> str:
     """Normalize paths/phrases into boundary-safe searchable text."""
-    normalized = re.sub(r"[^\w]+", " ", value.casefold(), flags=re.UNICODE)
+    normalized = re.sub(r"[\W_]+", " ", value.casefold(), flags=re.UNICODE)
     return " " + " ".join(normalized.split()) + " "
 
 
