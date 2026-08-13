@@ -45,7 +45,7 @@ def remember_undone_moves(database, entries: list[dict]) -> int:
 
 def apply_undo_feedback(plan: dict, rules: list[dict] | None) -> dict:
     """Turn previously undone exact destinations into review-only suggestions."""
-    if not rules:
+    if plan.get("undo_feedback_applied"):
         return plan
     result = {**plan, "summary": dict(plan.get("summary") or {})}
     items = []
@@ -65,4 +65,5 @@ def apply_undo_feedback(plan: dict, rules: list[dict] | None) -> dict:
         items.append(item)
     result["items"] = items
     result["summary"]["blocked_by_undo_memory"] = blocked
+    result["undo_feedback_applied"] = True
     return result
