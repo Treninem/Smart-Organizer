@@ -28,10 +28,12 @@ def render_folder_tree(folders: list[dict], root: str | None = None, limit: int 
                     depth = 0
                     label = str(root_path)
                 else:
-                    depth = max(0, len(relative.parts) - 1)
+                    depth = len(relative.parts)
                     label = relative.name
             except (ValueError, OSError):
                 pass
-        branch = "└─ " if depth else ""
-        lines.append(f"{'   ' * depth}{branch}{label}")
+        if depth <= 0:
+            lines.append(str(label))
+        else:
+            lines.append(f"{'   ' * (depth - 1)}└─ {label}")
     return "\n".join(lines)
