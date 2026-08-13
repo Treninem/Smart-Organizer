@@ -64,10 +64,10 @@ class SortPlannerTests(unittest.TestCase):
             {"path": r"D:\Work\Project-B\src", "name": "src", "depth": 2},
         ]
         result = build_sort_plan(files, folders, [], r"D:\Work")
-        targets = [item["target_dir"].lower() for item in result["items"]]
-        self.assertNotIn(r"d:\work\project-b\src".lower(), targets)
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["summary"]["already_placed"], 1)
 
-    def test_file_inside_project_uses_that_project_existing_folder(self):
+    def test_existing_project_internals_are_not_rearranged(self):
         files = [{
             "path": r"D:\Work\Project-A\main.py",
             "parent": r"D:\Work\Project-A",
@@ -78,10 +78,10 @@ class SortPlannerTests(unittest.TestCase):
         folders = [
             {"path": r"D:\Work\Project-A", "name": "Project-A", "depth": 1},
             {"path": r"D:\Work\Project-A\src", "name": "src", "depth": 2},
-            {"path": r"D:\Work\Project-B\src", "name": "src", "depth": 2},
         ]
         result = build_sort_plan(files, folders, [], r"D:\Work")
-        self.assertEqual(result["items"][0]["target_dir"], r"D:\Work\Project-A\src")
+        self.assertEqual(result["items"], [])
+        self.assertEqual(result["summary"]["already_placed"], 1)
 
 
 if __name__ == "__main__":
