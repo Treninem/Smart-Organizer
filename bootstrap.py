@@ -49,6 +49,7 @@ def _self_test(root: Path) -> int:
         from core import modern_ui_runtime as _modern_ui_test  # noqa: F401
         from core import operation_executor as _operation_executor_test  # noqa: F401
         from core import operation_journal as _operation_journal_test  # noqa: F401
+        from core import safe_layout_runtime as _safe_layout_test  # noqa: F401
         from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
 
