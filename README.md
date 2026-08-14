@@ -5,33 +5,59 @@ Local-first Windows assistant for practical file, project and version organizati
 ## Principles
 - Local-first: no paid APIs and no cloud database requirement.
 - `data/`, `logs/` and learned `knowledge.db` stay on the user's PC and are preserved by updates.
-- Existing user folder trees and real placement habits have priority over generated templates.
+- Existing user folder trees and real placement habits have priority over generated templates and historical memory.
 - Existing project internals are protected from automatic rearrangement.
 - A filesystem change happens only after a visible plan and explicit confirmation.
 - Existing destinations are never overwritten.
 - Applied batches are journaled and reversible with Undo.
 
-## v0.2.14
+## v0.2.15
 
-This release focuses on making the main **Навести порядок** action useful instead of merely showing analysis.
+This release makes the organizer adaptive instead of relying only on hard-coded folder rules.
+
+### Local placement learning
+When the user confirms a successful file placement, Smart Organizer stores a compact semantic example locally in `knowledge.db`: project identity (when known), category, extension and destination folder. The rule is not uploaded anywhere.
+
+Safety rules for learning:
+- one confirmation is **not** enough for an automatic decision;
+- a route becomes mature only after repeated confirmations;
+- current real folder usage always outranks old learned history;
+- learning applies only to loose/root/inbox files, never to files already inside normal project trees;
+- project-specific learning cannot cross into another project;
+- two equally confirmed destinations are treated as ambiguous and blocked;
+- Undo removes the positive example and remembers the exact rejected source → destination pair;
+- stale learned folders are ignored when they no longer exist in the current scan.
+
+The Files screen now shows how many placement rules are learned, how many are mature, how many are still learning, how many decisions were boosted by confirmed history and how many memory conflicts were blocked.
+
+### One planner for every button
+`Навести порядок`, `План порядка` and `В журнал` now use the same final safety/learning pipeline. Older toolbar actions can no longer bypass newer ambiguity checks or route medium-confidence suggestions into the operation journal.
+
+The journal shortcut is intentionally stricter: it accepts only high-confidence moves into already existing folders. Creating new grouping folders remains available only through the main reviewed workflow.
+
+### Smarter project classification
+Project matching no longer silently chooses one project when two projects receive the same evidence score. Generic shared words such as `bot`, `app` or `server` therefore produce an ambiguous/no-project result instead of a random project assignment.
+
+Local file classification was expanded for practical formats including CBZ/CBR, EPUB/MOBI/FB2, PSD/XCF, BLEND/FBX/GLTF/GLB, APK, OPUS and additional archive/code formats.
 
 ### Real organization workflow
 1. Scan the selected Desktop/folder/drive read-only.
 2. Learn how the user already groups archives, images, documents, project files and other content.
-3. Build one plan with source, destination, confidence and explanation.
-4. Block ambiguous or medium-confidence automatic moves.
-5. Show files/folders that are safe enough to apply and keep uncertain suggestions read-only.
-6. Preflight the whole confirmed batch before the first change.
-7. Apply without overwriting existing paths.
-8. Rescan and keep full Undo information.
+3. Combine current layout evidence with repeatedly confirmed local placement rules.
+4. Build one plan with source, destination, confidence and explanation.
+5. Block ambiguous, conflicting or medium-confidence automatic moves.
+6. Show files/folders that are safe enough to apply and keep uncertain suggestions read-only.
+7. Preflight the whole confirmed batch before the first change.
+8. Apply without overwriting existing paths.
+9. Rescan, store useful confirmed examples and keep full Undo information.
 
 ### Existing-layout learning
 Folder names alone are not trusted. Real direct contents of a folder are stronger evidence: category, extension, archive use and recognized project association. If two destinations receive nearly equal evidence, the move is stopped instead of guessed.
 
-Undo now acts as negative local feedback: when the user reverses a normal move, the exact same source → destination pair is remembered locally and is not offered again as an automatic action.
+Undo acts as negative local feedback: when the user reverses a normal move, the exact same source → destination pair is remembered locally and is not offered again as an automatic action.
 
 ### Whole-folder compaction
-The organizer can now recognize obvious top-level project folders and move the **whole folder** into an already existing user container such as `Боты`, `Minecraft` or `Программы`. It never flattens or merges the project's internals. If more than one container looks valid, nothing is moved.
+The organizer can recognize obvious top-level project folders and move the **whole folder** into an already existing user container such as `Боты`, `Minecraft` or `Программы`. It never flattens or merges the project's internals. If more than one container looks valid, nothing is moved.
 
 A loose root-level project file is routed into a project folder only when the destination is unambiguous. Several version folders without a clear canonical project folder cause the file to stay in place.
 
@@ -52,12 +78,13 @@ Three or more sibling folders with the same artifact identity and explicit versi
 - real Windows Desktop and Downloads resolution, including redirected folders;
 - read-only recursive scanning of Desktop, Downloads, chosen folders and drive roots;
 - safe system-folder filtering only where appropriate;
-- local SQLite knowledge, settings, action history and operation journal;
+- local SQLite knowledge, settings, action history, adaptive placement memory and operation journal;
 - file classification for images, documents, code, archives, drawings/CAD, video, audio and programs;
-- boundary-safe project recognition and generic project templates;
+- boundary-safe and ambiguity-safe project recognition plus generic project templates;
 - local Smart Brain overview without paid/network AI;
 - version recognition protected against ordinary counters, years and calendar dates;
 - existing-layout scoring plus ambiguity blocking;
+- repeated-confirmation placement learning with Undo demotion;
 - whole project-folder compaction into existing user containers;
 - conservative version-folder family grouping;
 - exact duplicate detection using quick signature plus full SHA-256 inside project scope;
@@ -78,4 +105,4 @@ Smart Organizer is deliberately biased toward false negatives rather than destru
 
 Project folders are treated as structural units. Their internal files are not redistributed merely because another project contains files with the same names. Exact duplicates are never inferred from names alone.
 
-Local learned knowledge and Undo feedback are stored on the PC and are not committed to GitHub.
+Local learned knowledge, placement examples and Undo feedback are stored on the PC and are not committed to GitHub.
