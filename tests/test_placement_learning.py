@@ -150,6 +150,48 @@ class PlacementLearningTests(unittest.TestCase):
         self.assertEqual(str(self.other), result["items"][0]["target_dir"])
         self.assertTrue(result["items"][0]["reason"].startswith("user_layout:"))
 
+    def test_mature_rule_keeps_file_when_it_is_already_in_learned_folder(self):
+        remember_confirmed_items(
+            self.db,
+            [self._item("one.zip", self.archives), self._item("two.zip", self.archives)],
+        )
+        source = self.archives / "already.zip"
+        record = {
+            "path": str(source),
+            "parent": str(self.archives),
+            "name": source.name,
+            "category": "Архивы",
+            "extension": ".zip",
+            "project_hint": "",
+        }
+        plan = {
+            "items": [
+                {
+                    "source": str(source),
+                    "target_dir": str(self.other),
+                    "target_path": str(self.other / source.name),
+                    "mode": "proposed",
+                    "score": 0,
+                    "confidence": "low",
+                    "requires_confirmation": True,
+                    "reason": "generic_guess",
+                    "evidence": [],
+                    "category": "Архивы",
+                    "extension": ".zip",
+                    "project_hint": "",
+                }
+            ],
+            "summary": {"files_considered": 1, "already_placed": 0},
+        }
+        # The learned rule applies only to loose/inbox sources. A file already
+        # in a normal user folder therefore stays governed by current layout and
+        # is never pulled out merely because of historical memory.
+        result = apply_confirmed_learning(
+            plan, [record], self.folders, self.db.get_setting(SETTINGS_KEY, []), str(self.root)
+        )
+        self.assertEqual(str(self.other), result["items"][0]["target_dir"])
+        self.assertEqual(0, result["summary"].get("learned_moves_boosted", 0))
+
     def test_undo_removes_positive_example_and_demotes_rule(self):
         first = self._item("one.zip", self.archives)
         second = self._item("two.zip", self.archives)
