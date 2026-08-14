@@ -75,6 +75,7 @@ def main() -> None:
         ("core.safe_layout_runtime", "install_safe_layout_runtime", "защита пользовательской компоновки"),
         ("core.maximum_safety_runtime", "install_maximum_safety_runtime", "усиленная компоновка"),
         ("core.final_safety_runtime", "install_final_safety_runtime", "финальный контроль плана"),
+        ("core.adaptive_feedback_runtime", "install_adaptive_feedback_runtime", "локальное обучение и Undo"),
     ]
     for module_name, function_name, label in installers:
         try:
