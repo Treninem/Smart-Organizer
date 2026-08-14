@@ -20,6 +20,7 @@ import time  # noqa: F401
 import tkinter  # noqa: F401
 import urllib.request  # noqa: F401
 import uuid  # noqa: F401
+import zipfile  # noqa: F401
 from ctypes import wintypes  # noqa: F401
 from dataclasses import dataclass, field  # noqa: F401
 from pathlib import Path
@@ -37,6 +38,7 @@ def _self_test(root: Path) -> int:
     import tkinter.scrolledtext as _scrolledtext_test  # noqa: F401
     import urllib.request as _urllib_test  # noqa: F401
     import uuid as _uuid_test  # noqa: F401
+    import zipfile as _zipfile_test  # noqa: F401
 
     if (root / "core").is_dir():
         from core import adaptive_feedback_runtime as _adaptive_feedback_test  # noqa: F401
