@@ -10,8 +10,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from core.background_engine import (
-    DEFAULT_POWER_SETTINGS,
     POWER_SETTINGS_KEY,
+    apply_corrections,
     apply_download_moves,
     normalized_power_settings,
 )
@@ -21,9 +21,9 @@ from core.paths import data_root
 from core.placement_learning import SETTINGS_KEY as LEARNING_KEY, learning_summary
 from core.scanner import scan_tree
 from core.version_retention import build_version_retention_plan, quarantine_operations
-from core.windows_paths import downloads_path
 
-RUN_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+RUN_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+LEGACY_RUN_KEY = r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
 RUN_VALUE = "SmartOrganizer"
 
 
@@ -41,7 +41,7 @@ def set_windows_autostart(enabled: bool, executable: Path | None = None) -> tupl
         if enabled:
             proc = subprocess.run(
                 [
-                    "reg.exe", "add", RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ",
+                    "reg.exe", "add", LEGACY_RUN_KEY, "/v", RUN_VALUE, "/t", "REG_SZ",
                     "/d", windows_autostart_command(exe), "/f",
                 ],
                 capture_output=True,
@@ -52,16 +52,17 @@ def set_windows_autostart(enabled: bool, executable: Path | None = None) -> tupl
             )
         else:
             proc = subprocess.run(
-                ["reg.exe", "delete", RUN_KEY, "/v", RUN_VALUE, "/f"],
+                ["reg.exe", "delete", LEGACY_RUN_KEY, "/v", RUN_VALUE, "/f"],
                 capture_output=True,
                 text=True,
                 errors="replace",
                 timeout=5,
                 creationflags=creationflags,
             )
-            # Missing value while disabling already means the desired state.
-            if proc.returncode != 0 and "unable to find" in (proc.stderr or proc.stdout).casefold():
-                return True, "Автозапуск уже выключен."
+            if proc.returncode != 0:
+                text = (proc.stderr or proc.stdout or "").casefold()
+                if "unable to find" in text or "не удается найти" in text or "не найден" in text:
+                    return True, "Автозапуск уже выключен."
         if proc.returncode != 0:
             return False, (proc.stderr or proc.stdout or "reg.exe error").strip()
         return True, "Автозапуск Windows обновлён."
@@ -75,7 +76,7 @@ def _quarantine_root() -> Path:
 
 
 def install_background_runtime(main_window) -> None:
-    """Add a conservative always-on organizer and a clear power settings UI."""
+    """Add conservative always-on organization and broad understandable settings."""
     cls = main_window.SmartOrganizerApp
     if getattr(cls, "_background_runtime_installed", False):
         return
@@ -116,13 +117,21 @@ def install_background_runtime(main_window) -> None:
 
         def work() -> None:
             moved = 0
+            corrected = 0
             retained = 0
             errors: list[str] = []
+            projects = self.knowledge.get("projects", [])
             try:
-                result = apply_download_moves(self.db, self.knowledge.get("projects", []))
+                result = apply_download_moves(self.db, projects)
                 moved = int(result.get("moved", 0))
             except Exception as exc:
                 errors.append(f"Downloads: {exc}")
+
+            try:
+                result = apply_corrections(self.db, projects)
+                corrected = int(result.get("corrected", 0))
+            except Exception as exc:
+                errors.append(f"исправление: {exc}")
 
             settings_now = self._power_settings()
             if settings_now.get("auto_quarantine_old_versions"):
@@ -140,7 +149,7 @@ def install_background_runtime(main_window) -> None:
                         retained = int(execution.get("applied", 0))
                         root_text = self.db.get_setting("last_scan_root")
                         if root_text and Path(str(root_text)).exists():
-                            refreshed = scan_tree(Path(str(root_text)), self.knowledge.get("projects", []))
+                            refreshed = scan_tree(Path(str(root_text)), projects)
                             self.db.replace_scan(refreshed.folders, refreshed.files)
                         self.db.log_action(
                             "automatic-version-retention",
@@ -156,24 +165,26 @@ def install_background_runtime(main_window) -> None:
                 {
                     "time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
                     "downloads_moved": moved,
+                    "corrected_own_moves": corrected,
                     "retention_operations": retained,
                     "errors": errors,
                 },
             )
             try:
-                self.after(0, lambda: self._finish_background_tick(moved, retained, errors))
+                self.after(0, lambda: self._finish_background_tick(moved, corrected, retained, errors))
             except Exception:
                 pass
 
         self._background_thread = threading.Thread(target=work, daemon=True)
         self._background_thread.start()
 
-    def _finish_background_tick(self, moved: int, retained: int, errors: list[str]) -> None:
+    def _finish_background_tick(self, moved: int, corrected: int, retained: int, errors: list[str]) -> None:
         if errors:
             self.status_var.set("Фоновая проверка завершена с предупреждением: " + errors[0])
-        elif moved or retained:
+        elif moved or corrected or retained:
             self.status_var.set(
-                f"Фоновая работа: перемещено загрузок {moved}; операций карантина старых версий {retained}. Undo доступен."
+                f"Фон: загрузок перемещено {moved}; своих ошибок исправлено {corrected}; "
+                f"операций карантина старых версий {retained}. Undo доступен."
             )
         self._schedule_background()
 
@@ -191,45 +202,54 @@ def install_background_runtime(main_window) -> None:
         except ValueError:
             messagebox.showwarning("Умные настройки", "Интервал, возраст файла и число сохраняемых версий должны быть целыми числами.")
             return
-        routes = {category: variable.get().strip() for category, variable in self._route_vars.items()}
-        settings = {
-            **current,
-            "background_enabled": bool(self._power_vars["background_enabled"].get()),
-            "background_interval_minutes": interval,
-            "start_with_windows": bool(self._power_vars["start_with_windows"].get()),
-            "close_to_background": bool(self._power_vars["close_to_background"].get()),
-            "auto_sort_downloads": bool(self._power_vars["auto_sort_downloads"].get()),
-            "download_min_age_seconds": age,
-            "separate_chatgpt": bool(self._power_vars["separate_chatgpt"].get()),
-            "chatgpt_target": self._power_path_vars["chatgpt_target"].get().strip(),
-            "routes": routes,
-            "keep_latest_versions": keep,
-            "auto_quarantine_old_versions": bool(self._power_vars["auto_quarantine_old_versions"].get()),
-            "strictness": self._power_vars["strictness"].get(),
-        }
-        settings = normalized_power_settings(settings)
 
-        missing = []
-        for label, path_text in [("ChatGPT/OpenAI", settings["chatgpt_target"]), *list(settings["routes"].items())]:
+        routes = {category: variable.get().strip() for category, variable in self._route_vars.items()}
+        project_routes = {name: variable.get().strip() for name, variable in self._project_route_vars.items()}
+        settings = normalized_power_settings(
+            {
+                **current,
+                "background_enabled": bool(self._power_vars["background_enabled"].get()),
+                "background_interval_minutes": interval,
+                "start_with_windows": bool(self._power_vars["start_with_windows"].get()),
+                "close_to_background": bool(self._power_vars["close_to_background"].get()),
+                "auto_sort_downloads": bool(self._power_vars["auto_sort_downloads"].get()),
+                "download_min_age_seconds": age,
+                "separate_chatgpt": bool(self._power_vars["separate_chatgpt"].get()),
+                "chatgpt_target": self._power_path_vars["chatgpt_target"].get().strip(),
+                "project_routes": project_routes,
+                "routes": routes,
+                "keep_latest_versions": keep,
+                "auto_quarantine_old_versions": bool(self._power_vars["auto_quarantine_old_versions"].get()),
+                "auto_correct_own_moves": bool(self._power_vars["auto_correct_own_moves"].get()),
+                "strictness": self._power_vars["strictness"].get(),
+            }
+        )
+
+        missing: list[str] = []
+        candidates = [("ChatGPT/OpenAI", settings["chatgpt_target"])]
+        candidates.extend((f"тип {name}", path) for name, path in settings["routes"].items())
+        candidates.extend((f"проект {name}", path) for name, path in settings["project_routes"].items())
+        for label, path_text in candidates:
             if path_text and not Path(path_text).is_dir():
                 missing.append(f"{label}: {path_text}")
         if missing:
             messagebox.showwarning(
                 "Папки назначения",
-                "Эти папки не существуют. Smart Organizer не создаёт их молча:\n\n" + "\n".join(missing[:12]),
+                "Эти папки не существуют. Smart Organizer не создаёт их молча:\n\n" + "\n".join(missing[:16]),
             )
             return
 
         self.db.set_setting(POWER_SETTINGS_KEY, settings)
         auto_ok, auto_message = set_windows_autostart(settings["start_with_windows"])
-        self._schedule_background(15)
+        self._schedule_background(10)
         self.status_var.set("Умные настройки сохранены. " + auto_message)
         if not auto_ok and settings["start_with_windows"]:
             messagebox.showwarning("Автозапуск", "Настройки сохранены, но Windows автозапуск включить не удалось:\n" + auto_message)
         else:
             messagebox.showinfo(
                 "Умные настройки",
-                "Сохранено. Фоновый режим использует только существующие папки, не перезаписывает файлы и ведёт Undo-журнал.",
+                "Сохранено. Новые явные маршруты имеют приоритет. Если Smart Organizer раньше сам положил файл не туда, "
+                "фон может исправить только это собственное перемещение и только при однозначном новом маршруте.",
             )
 
     def _show_retention_plan(self) -> None:
@@ -241,21 +261,19 @@ def install_background_runtime(main_window) -> None:
         if not plan["items"]:
             messagebox.showinfo(
                 "Версии 5+",
-                f"Кандидатов нет. Для каждой явной версии сохраняются последние {summary['keep_latest']} версий.",
+                f"Кандидатов нет. Для каждой явной цепочки сохраняются последние {summary['keep_latest']} версий.",
             )
             return
-        preview = "\n".join(
-            f"• {item['version']} | {item['source']}" for item in plan["items"][:12]
-        )
+        preview = "\n".join(f"• {item['version']} | {item['source']}" for item in plan["items"][:12])
         if len(plan["items"]) > 12:
             preview += f"\n… ещё {len(plan['items']) - 12}"
         messagebox.showinfo(
-            "Старые версии — только план",
+            "Старые версии — строгий план",
             f"Семейств: {summary['families']}\n"
             f"Старых архивов: {summary['archive_candidates']}\n"
             f"Старых папок проектов: {summary['folder_candidates']}\n"
             f"Постоянных удалений: {summary['permanent_deletes']}\n\n{preview}\n\n"
-            "Распознаются только явные версии. Обычные нумерованные папки не затрагиваются.",
+            "Учитываются только явные версии. Обычные нумерованные папки, даты и разные проекты не объединяются.",
         )
 
     def quarantine_old_versions_now(self) -> None:
@@ -273,7 +291,7 @@ def install_background_runtime(main_window) -> None:
             f"Будут сохранены последние {summary['keep_latest']} явных версий каждого семейства.\n"
             f"В карантин: {summary['candidates']} элементов.\n"
             f"Архивов: {summary['archive_candidates']}; целых папок проектов: {summary['folder_candidates']}.\n\n"
-            f"{preview}\n\nНичего не удаляется навсегда. Все элементы перемещаются целиком в локальный карантин и доступны для Undo. Продолжить?",
+            f"{preview}\n\nНичего не удаляется навсегда. Все элементы перемещаются целиком и доступны для Undo. Продолжить?",
         ):
             return
         root = _quarantine_root()
@@ -295,7 +313,8 @@ def install_background_runtime(main_window) -> None:
                 f"applied={result['applied']}; keep_latest={summary['keep_latest']}; permanent_deletes=0",
             )
             self.status_var.set(
-                f"Старые версии помещены в карантин: операций {result['applied']}. Последние {summary['keep_latest']} версий сохранены. Undo доступен."
+                f"Старые версии помещены в карантин: операций {result['applied']}. "
+                f"Последние {summary['keep_latest']} версий сохранены. Undo доступен."
             )
 
         self._start_worker("Перемещаю подтверждённые старые версии в обратимый карантин…", work, done)
@@ -305,13 +324,14 @@ def install_background_runtime(main_window) -> None:
         original_on_close(self)
 
     def show_settings(self) -> None:
-        self._set_stable_nav("Настройки") if hasattr(self, "_set_stable_nav") else None
+        if hasattr(self, "_set_stable_nav"):
+            self._set_stable_nav("Настройки")
         self.clear_content()
         ttk.Label(self.content, text="Настройки и подстройка", style="Title.TLabel").pack(anchor="w", pady=(4, 8))
         ttk.Label(
             self.content,
-            text="Широкие настройки без скрытых действий: фон, автозапуск, Загрузки, ChatGPT/OpenAI, версии и безопасность.",
-            wraplength=900,
+            text="Фон, Windows, Загрузки, типы файлов, ChatGPT/OpenAI, известные проекты, версии 5+ и самоисправление — всё настраивается явно.",
+            wraplength=940,
             justify="left",
         ).pack(anchor="w", pady=(0, 10))
 
@@ -326,20 +346,26 @@ def install_background_runtime(main_window) -> None:
             "separate_chatgpt": tk.BooleanVar(value=settings["separate_chatgpt"]),
             "keep_latest_versions": tk.StringVar(value=str(settings["keep_latest_versions"])),
             "auto_quarantine_old_versions": tk.BooleanVar(value=settings["auto_quarantine_old_versions"]),
+            "auto_correct_own_moves": tk.BooleanVar(value=settings["auto_correct_own_moves"]),
             "strictness": tk.StringVar(value=settings["strictness"]),
         }
         self._power_path_vars = {"chatgpt_target": tk.StringVar(value=settings["chatgpt_target"])}
         self._route_vars = {category: tk.StringVar(value=path) for category, path in settings["routes"].items()}
+        self._project_route_vars = {
+            str(project.get("name")): tk.StringVar(value=settings["project_routes"].get(str(project.get("name")), ""))
+            for project in self.knowledge.get("projects", []) if project.get("name")
+        }
 
         notebook = ttk.Notebook(self.content)
         notebook.pack(fill="both", expand=True)
-
         background = ttk.Frame(notebook, padding=12)
         downloads = ttk.Frame(notebook, padding=12)
+        projects_tab = ttk.Frame(notebook, padding=12)
         versions = ttk.Frame(notebook, padding=12)
         safety = ttk.Frame(notebook, padding=12)
         notebook.add(background, text="Фон и Windows")
         notebook.add(downloads, text="Загрузки и типы")
+        notebook.add(projects_tab, text="Проекты")
         notebook.add(versions, text="Версии 5+")
         notebook.add(safety, text="Безопасность")
 
@@ -349,17 +375,22 @@ def install_background_runtime(main_window) -> None:
         ttk.Label(background, text="Фоновая проверка каждые").grid(row=3, column=0, sticky="w", pady=(12, 0))
         ttk.Entry(background, textvariable=self._power_vars["background_interval_minutes"], width=7).grid(row=3, column=1, sticky="w", padx=6, pady=(12, 0))
         ttk.Label(background, text="минут").grid(row=3, column=2, sticky="w", pady=(12, 0))
+        ttk.Checkbutton(
+            background,
+            text="Самоисправлять только собственные прошлые ошибочные перемещения при появлении более точного явного маршрута",
+            variable=self._power_vars["auto_correct_own_moves"],
+        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(10, 0))
         ttk.Label(
             background,
-            text="Автозапуск записывается только для текущего пользователя Windows и не требует прав администратора. При старте с Windows окно открывается свёрнутым.",
-            wraplength=780,
+            text="Автозапуск действует только для текущего пользователя Windows. Самоисправление никогда не перебирает произвольные пользовательские файлы — только ещё применённые записи собственного Undo-журнала Smart Organizer.",
+            wraplength=820,
             justify="left",
-        ).grid(row=4, column=0, columnspan=3, sticky="w", pady=(14, 0))
+        ).grid(row=5, column=0, columnspan=3, sticky="w", pady=(12, 0))
 
         ttk.Checkbutton(downloads, text="Автоматически разбирать завершённые файлы из Загрузок", variable=self._power_vars["auto_sort_downloads"]).grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Label(downloads, text="Не трогать новый файл первые").grid(row=1, column=0, sticky="w", pady=(8, 0))
         ttk.Entry(downloads, textvariable=self._power_vars["download_min_age_seconds"], width=8).grid(row=1, column=1, sticky="w", padx=6, pady=(8, 0))
-        ttk.Label(downloads, text="секунд — защита незавершённых загрузок").grid(row=1, column=2, sticky="w", pady=(8, 0))
+        ttk.Label(downloads, text="секунд").grid(row=1, column=2, sticky="w", pady=(8, 0))
         ttk.Checkbutton(downloads, text="Отделять файлы с явными метками ChatGPT / OpenAI / DALL-E / Sora", variable=self._power_vars["separate_chatgpt"]).grid(row=2, column=0, columnspan=3, sticky="w", pady=(10, 0))
         ttk.Label(downloads, text="ChatGPT/OpenAI →").grid(row=3, column=0, sticky="w", pady=4)
         ttk.Entry(downloads, textvariable=self._power_path_vars["chatgpt_target"], width=62).grid(row=3, column=1, sticky="ew", padx=6, pady=4)
@@ -375,10 +406,30 @@ def install_background_runtime(main_window) -> None:
         downloads.columnconfigure(1, weight=1)
         ttk.Label(
             downloads,
-            text="Пустое поле = не задавать жёсткий маршрут. Тогда Smart Organizer использует только зрелое локальное обучение. Папки назначения должны уже существовать; перезапись запрещена.",
-            wraplength=820,
+            text="Приоритет: известный проект → ChatGPT/OpenAI → явный тип файла → зрелое локальное обучение. Пустое поле не создаёт правило. Существующие файлы никогда не перезаписываются.",
+            wraplength=840,
             justify="left",
         ).grid(row=row, column=0, columnspan=3, sticky="w", pady=(10, 0))
+
+        ttk.Label(
+            projects_tab,
+            text="Известные проекты из нашей истории. Для каждого можно указать реальную существующую папку. Тогда скачанный файл с однозначными признаками проекта попадёт туда раньше общего правила типа файла.",
+            wraplength=850,
+            justify="left",
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 8))
+        project_row = 1
+        for project in self.knowledge.get("projects", []):
+            name = str(project.get("name") or "")
+            if not name:
+                continue
+            variable = self._project_route_vars[name]
+            ttk.Label(projects_tab, text=f"{name} →").grid(row=project_row, column=0, sticky="w", pady=3)
+            ttk.Entry(projects_tab, textvariable=variable, width=62).grid(row=project_row, column=1, sticky="ew", padx=6, pady=3)
+            key = f"project:{name}"
+            self._power_path_vars[key] = variable
+            ttk.Button(projects_tab, text="Выбрать", command=lambda k=key: self._browse_power_folder(k)).grid(row=project_row, column=2, sticky="w", pady=3)
+            project_row += 1
+        projects_tab.columnconfigure(1, weight=1)
 
         ttk.Label(versions, text="Сохранять последних явных версий:").grid(row=0, column=0, sticky="w")
         ttk.Entry(versions, textvariable=self._power_vars["keep_latest_versions"], width=7).grid(row=0, column=1, sticky="w", padx=8)
@@ -389,11 +440,8 @@ def install_background_runtime(main_window) -> None:
         ).grid(row=1, column=0, columnspan=3, sticky="w", pady=(10, 0))
         ttk.Label(
             versions,
-            text=(
-                "Строгая защита: учитываются только явные версии (например v1.2.3). Для папок с кодом обязателен прямой маркер проекта — main.py, requirements.txt, package.json, project.godot и т.п. "
-                "Обычные папки 2024, Фото 12 и разные проекты с одинаковыми main.py не считаются одной цепочкой. Постоянное удаление не выполняется — используется карантин + Undo."
-            ),
-            wraplength=820,
+            text="Для папок с кодом обязателен прямой маркер проекта (main.py, requirements.txt, package.json, project.godot и т.п.). Семейство должно содержать больше заданного числа явных версий. Постоянного удаления нет: только карантин + Undo.",
+            wraplength=840,
             justify="left",
         ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(12, 10))
         ttk.Button(versions, text="Показать кандидатов 5+", command=self._show_retention_plan).grid(row=3, column=0, sticky="w")
@@ -403,26 +451,20 @@ def install_background_runtime(main_window) -> None:
         ttk.Label(
             safety,
             text=(
-                "Режим строгости: программа предпочитает ничего не сделать, чем ошибиться.\n\n"
+                "Smart Organizer предпочитает пропустить действие, чем ошибиться.\n\n"
                 f"Локальных правил размещения: {learned['rules']}\n"
                 f"Надёжных после повторных подтверждений: {learned['mature']}\n"
                 f"Ещё обучаются: {learned['learning']}\n\n"
-                "Всегда включено: защита проектных границ; запрет перезаписи; пакетный preflight; журнал; Undo; SHA-256 для точных дублей; data/ и logs/ не заменяются обновлением."
+                "Всегда включено: границы проектов; запрет перезаписи; пакетный preflight; журнал; Undo; SHA-256 для точных дублей; локальная data/ не заменяется обновлением."
             ),
-            wraplength=820,
+            wraplength=840,
             justify="left",
         ).pack(anchor="w")
         strict_row = ttk.Frame(safety)
         strict_row.pack(fill="x", pady=(14, 0))
         ttk.Label(strict_row, text="Строгость:").pack(side="left")
-        ttk.Combobox(
-            strict_row,
-            textvariable=self._power_vars["strictness"],
-            values=("strict", "balanced"),
-            state="readonly",
-            width=14,
-        ).pack(side="left", padx=8)
-        ttk.Label(strict_row, text="strict — максимум защиты; balanced — больше подсказок, но фон всё равно выполняет только надёжные маршруты.").pack(side="left", padx=4)
+        ttk.Combobox(strict_row, textvariable=self._power_vars["strictness"], values=("strict", "balanced"), state="readonly", width=14).pack(side="left", padx=8)
+        ttk.Label(strict_row, text="Фон в обоих режимах выполняет только однозначные безопасные маршруты.").pack(side="left", padx=4)
 
         bottom = ttk.Frame(self.content)
         bottom.pack(fill="x", pady=(10, 0))
@@ -448,20 +490,17 @@ def install_background_runtime(main_window) -> None:
                 f"Windows: {'автозапуск' if settings['start_with_windows'] else 'ручной запуск'}   "
                 f"Загрузки: {'автосортировка' if settings['auto_sort_downloads'] else 'только вручную'}   "
                 f"Сохранять версий: {settings['keep_latest_versions']}\n"
-                f"Последняя фоновая проверка: {last.get('time', 'ещё не выполнялась')}"
+                f"Последняя проверка: {last.get('time', 'ещё не выполнялась')}   "
+                f"исправлено своих ошибок: {last.get('corrected_own_moves', 0)}"
             ),
             justify="left",
         ).pack(anchor="w")
 
     def on_close(self) -> None:
         settings = self._power_settings()
-        if (
-            settings.get("background_enabled")
-            and settings.get("close_to_background")
-            and not getattr(self, "_force_real_exit", False)
-        ):
+        if settings.get("background_enabled") and settings.get("close_to_background") and not getattr(self, "_force_real_exit", False):
             self.iconify()
-            self.status_var.set("Smart Organizer свёрнут и продолжает работать в фоне. Для полного выхода используйте Настройки → Полностью выйти.")
+            self.status_var.set("Smart Organizer свёрнут и продолжает работать в фоне. Для полного выхода: Настройки → Полностью выйти.")
             return
         original_on_close(self)
 
@@ -471,9 +510,6 @@ def install_background_runtime(main_window) -> None:
         self._force_real_exit = False
         original_init(self, *args, **kwargs)
         settings = self._power_settings()
-        # The user requested Windows background/autostart behavior. Keep the
-        # registry entry self-healing on real frozen launches, but never modify
-        # the CI machine during application self-tests.
         if getattr(sys, "frozen", False) and "--app-self-test" not in sys.argv:
             set_windows_autostart(settings["start_with_windows"])
         if "--background" in sys.argv and settings["background_enabled"]:
