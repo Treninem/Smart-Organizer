@@ -4,18 +4,44 @@ import re
 from pathlib import Path
 
 CATEGORY_EXTENSIONS = {
-    "Изображения": {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".svg", ".ico", ".psd", ".xcf"},
-    "Документы": {".pdf", ".doc", ".docx", ".odt", ".txt", ".rtf", ".md", ".xlsx", ".xls", ".csv", ".ppt", ".pptx", ".epub", ".mobi", ".fb2", ".log"},
-    "Код": {".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".scss", ".java", ".kt", ".cs", ".cpp", ".c", ".h", ".go", ".rs", ".php", ".sql", ".json", ".yaml", ".yml", ".toml", ".ini", ".xml", ".vue", ".svelte", ".dart", ".gradle"},
-    "Архивы": {".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".cbz", ".cbr", ".tgz", ".zst"},
-    "Видео": {".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".m4v", ".flv"},
-    "Аудио": {".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".opus", ".wma"},
-    "Чертежи": {".dwg", ".dxf", ".step", ".stp", ".iges", ".igs", ".stl", ".3mf", ".obj", ".blend", ".fbx", ".gltf", ".glb"},
-    "Программы": {".exe", ".msi", ".msix", ".appx", ".bat", ".cmd", ".ps1", ".apk", ".appxbundle"},
+    "Изображения": {
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".svg", ".ico", ".psd", ".xcf",
+        ".avif", ".heic", ".heif", ".jxl", ".raw", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".orf", ".rw2",
+    },
+    "Документы": {
+        ".pdf", ".doc", ".docx", ".odt", ".txt", ".rtf", ".md", ".xlsx", ".xls", ".csv", ".ppt", ".pptx",
+        ".epub", ".mobi", ".fb2", ".log", ".ods", ".odp", ".djvu", ".tex",
+    },
+    "Код": {
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css", ".scss", ".java", ".kt", ".cs", ".cpp", ".c", ".h",
+        ".go", ".rs", ".php", ".sql", ".json", ".yaml", ".yml", ".toml", ".ini", ".xml", ".vue", ".svelte", ".dart",
+        ".gradle", ".sh", ".bash", ".zsh", ".fish", ".rb", ".swift", ".lua", ".r", ".ipynb", ".proto", ".graphql",
+        ".properties", ".env.example", ".mcfunction",
+    },
+    "Архивы": {
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".cbz", ".cbr", ".tgz", ".zst", ".cab", ".iso",
+    },
+    "Видео": {
+        ".mp4", ".mkv", ".avi", ".mov", ".webm", ".wmv", ".m4v", ".flv", ".mpeg", ".mpg", ".m2ts", ".mts", ".ts",
+        ".vob", ".ogv", ".3gp", ".3g2", ".mxf",
+    },
+    "Аудио": {
+        ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac", ".opus", ".wma", ".aiff", ".aif", ".alac", ".ape", ".amr",
+    },
+    "Чертежи": {
+        ".dwg", ".dxf", ".step", ".stp", ".iges", ".igs", ".stl", ".3mf", ".obj", ".blend", ".fbx", ".gltf", ".glb",
+        ".sldprt", ".sldasm", ".ipt", ".iam", ".fcstd", ".skp",
+    },
+    "Программы": {
+        ".exe", ".msi", ".msix", ".appx", ".bat", ".cmd", ".ps1", ".apk", ".appxbundle", ".msixbundle", ".deb", ".rpm",
+    },
 }
 
 
 def category_for(path: Path) -> str:
+    name = path.name.casefold()
+    if name.endswith(".env.example"):
+        return "Код"
     ext = path.suffix.lower()
     for category, extensions in CATEGORY_EXTENSIONS.items():
         if ext in extensions:
@@ -24,7 +50,6 @@ def category_for(path: Path) -> str:
 
 
 def _search_text(value: str) -> str:
-    """Normalize paths/phrases into boundary-safe searchable text."""
     normalized = re.sub(r"[\W_]+", " ", value.casefold(), flags=re.UNICODE)
     return " " + " ".join(normalized.split()) + " "
 
@@ -57,13 +82,7 @@ def project_scores(path: Path, projects: list[dict]) -> list[tuple[int, str]]:
 
 
 def project_hint(path: Path, projects: list[dict]) -> str | None:
-    """Return a project only when the strongest evidence is unique.
-
-    A previous implementation silently chose one project on score ties. That is
-    dangerous for an organizer because generic words such as "bot", "app" or
-    "server" may belong to several projects. Ambiguity now returns None so the
-    planner leaves the item in place instead of guessing.
-    """
+    """Return a project only when the strongest evidence is unique."""
     scored = project_scores(path, projects)
     if not scored:
         return None
