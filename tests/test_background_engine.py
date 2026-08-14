@@ -1,14 +1,13 @@
 import json
 import tempfile
-import time
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from core.background_engine import (
     POWER_SETTINGS_KEY,
     apply_corrections,
     choose_configured_target,
+    infer_project_routes,
     normalized_power_settings,
 )
 from core.database import Database
@@ -43,6 +42,25 @@ class BackgroundEngineTests(unittest.TestCase):
         self.assertEqual(str(project_dir), decision["target_dir"])
         self.assertEqual("explicit-project-route:VoxLyra", decision["reason"])
 
+    def test_unique_existing_project_folder_can_be_inferred(self):
+        project_dir = self.root / "VoxLyra"
+        project_dir.mkdir()
+        folders = [
+            {"path": str(self.root), "parent": str(self.root.parent), "name": self.root.name, "depth": 0},
+            {"path": str(project_dir), "parent": str(self.root), "name": "VoxLyra", "depth": 1},
+        ]
+        routes = infer_project_routes(folders, self.projects)
+        self.assertEqual(str(project_dir), routes.get("VoxLyra"))
+
+    def test_multiple_version_project_folders_remain_ambiguous(self):
+        folders = []
+        for version in ("1.15.9", "1.16.2"):
+            path = self.root / f"VoxLyra_v{version}"
+            path.mkdir()
+            folders.append({"path": str(path), "parent": str(self.root), "name": path.name, "depth": 1})
+        routes = infer_project_routes(folders, self.projects)
+        self.assertNotIn("VoxLyra", routes)
+
     def test_chatgpt_route_separates_explicitly_named_file(self):
         ai_dir = self.root / "ChatGPT"
         image_dir = self.root / "Images"
@@ -58,6 +76,15 @@ class BackgroundEngineTests(unittest.TestCase):
         decision = choose_configured_target(source, settings, [], self.projects)
         self.assertEqual(str(ai_dir), decision["target_dir"])
         self.assertEqual("explicit-chatgpt-route", decision["reason"])
+
+    def test_generic_main_py_without_project_identity_is_not_background_routed(self):
+        code_dir = self.root / "Code"
+        code_dir.mkdir()
+        source = self.root / "main.py"
+        source.write_text("print('project-specific')", encoding="utf-8")
+        settings = normalized_power_settings({"routes": {"Код": str(code_dir)}})
+        self.assertIsNone(choose_configured_target(source, settings, [], self.projects))
+        self.assertTrue(source.exists())
 
     def test_existing_target_collision_blocks_background_move(self):
         target = self.root / "Docs"
