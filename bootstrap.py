@@ -40,6 +40,9 @@ def _self_test(root: Path) -> int:
 
     if (root / "core").is_dir():
         from core import adaptive_feedback_runtime as _adaptive_feedback_test  # noqa: F401
+        from core import background_engine as _background_engine_test  # noqa: F401
+        from core import background_runtime as _background_runtime_test  # noqa: F401
+        from core import content_profile as _content_profile_test  # noqa: F401
         from core import diagnostics as _diagnostics_test  # noqa: F401
         from core import diagnostics_ui_runtime as _diagnostics_ui_test  # noqa: F401
         from core import duplicate_insights as _duplicate_insights_test  # noqa: F401
@@ -60,6 +63,7 @@ def _self_test(root: Path) -> int:
         from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
         from core import undo_feedback as _undo_feedback_test  # noqa: F401
+        from core import version_retention as _version_retention_test  # noqa: F401
         from core import workspace_compactor as _workspace_compactor_test  # noqa: F401
 
     return 0
