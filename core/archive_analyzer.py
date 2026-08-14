@@ -4,7 +4,7 @@ import shutil
 from collections import Counter
 from pathlib import Path
 
-from .classifier import project_hint
+from .classifier import project_hint, project_scores
 from .version_manager import detect_version
 
 ARCHIVE_EXTENSIONS = {".zip", ".rar", ".7z"}
@@ -37,14 +37,6 @@ def _list_zip(path: Path) -> tuple[list[str], int, str]:
 
 
 def _parse_7zip_slt(output: str) -> tuple[list[str], int]:
-    """Parse ``7z l -slt`` output and keep files only.
-
-    Older code counted directory records as archive entries. That made entry
-    counts and extension statistics wrong for RAR/7Z archives with nested
-    folders. 7-Zip exposes ``Folder = +`` and/or directory attributes, so the
-    parser now filters those records explicitly.
-    """
-
     records: list[dict[str, str]] = []
     current: dict[str, str] = {}
 
@@ -120,7 +112,11 @@ def analyze_archive(path: Path, projects: list[dict]) -> dict:
     else:
         names, total, engine = _list_7zip(path)
 
+    # Project evidence is calculated from names only; archive payloads are not
+    # extracted or executed. Scores let background routing demand stronger
+    # evidence than the interactive informational project hint.
     sample_text = " ".join([path.name, *names[:500]])
+    scored = project_scores(Path(sample_text), projects)
     hint = project_hint(Path(sample_text), projects)
     version = detect_version(path.name)
     extensions = Counter(Path(name).suffix.lower() or "[без расширения]" for name in names)
@@ -131,6 +127,7 @@ def analyze_archive(path: Path, projects: list[dict]) -> dict:
         "entries": len(names),
         "uncompressed_bytes": total,
         "project_hint": hint,
+        "project_scores": scored[:8],
         "version": version.normalized if version else None,
         "top_extensions": extensions.most_common(12),
         "sample": names[:50],
