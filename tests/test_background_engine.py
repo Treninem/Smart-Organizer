@@ -1,6 +1,6 @@
-import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from core.background_engine import (
@@ -11,6 +11,7 @@ from core.background_engine import (
     normalized_power_settings,
 )
 from core.database import Database
+from core.knowledge import load_initial_knowledge
 from core.operation_executor import execute_batch
 from core.operation_journal import OperationJournal, ReversibleOperation
 
@@ -20,7 +21,7 @@ class BackgroundEngineTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.db = Database(self.root / "knowledge.db")
-        self.projects = json.loads(Path("config/initial_knowledge.json").read_text(encoding="utf-8"))["projects"]
+        self.projects = load_initial_knowledge(Path("config/initial_knowledge.json"))["projects"]
 
     def tearDown(self):
         self.db.close()
@@ -52,6 +53,15 @@ class BackgroundEngineTests(unittest.TestCase):
         routes = infer_project_routes(folders, self.projects)
         self.assertEqual(str(project_dir), routes.get("VoxLyra"))
 
+    def test_short_disk_folder_alias_can_identify_known_game_without_generic_keyword(self):
+        project_dir = self.root / "game"
+        project_dir.mkdir()
+        folders = [
+            {"path": str(project_dir), "parent": str(self.root), "name": "game", "depth": 1},
+        ]
+        routes = infer_project_routes(folders, self.projects)
+        self.assertEqual(str(project_dir), routes.get("Treninem-Game"))
+
     def test_multiple_version_project_folders_remain_ambiguous(self):
         folders = []
         for version in ("1.15.9", "1.16.2"):
@@ -60,6 +70,41 @@ class BackgroundEngineTests(unittest.TestCase):
             folders.append({"path": str(path), "parent": str(self.root), "name": path.name, "depth": 1})
         routes = infer_project_routes(folders, self.projects)
         self.assertNotIn("VoxLyra", routes)
+
+    def test_generic_zip_can_use_strong_internal_project_identity(self):
+        project_dir = self.root / "VoxLyra"
+        archive_dir = self.root / "Archives"
+        project_dir.mkdir()
+        archive_dir.mkdir()
+        source = self.root / "download.zip"
+        with zipfile.ZipFile(source, "w") as zf:
+            zf.writestr("VoxLyra/metadata.json", "{}")
+            zf.writestr("VoxLyra/Chapters/001/page001.jpg", b"image")
+        settings = normalized_power_settings({
+            "project_routes": {"VoxLyra": str(project_dir)},
+            "routes": {"Архивы": str(archive_dir)},
+        })
+        decision = choose_configured_target(source, settings, [], self.projects)
+        self.assertIsNotNone(decision)
+        self.assertEqual(str(project_dir), decision["target_dir"])
+        self.assertEqual("explicit-project-route:VoxLyra", decision["reason"])
+
+    def test_weak_generic_archive_word_does_not_override_archive_route(self):
+        project_dir = self.root / "VoxLyra"
+        archive_dir = self.root / "Archives"
+        project_dir.mkdir()
+        archive_dir.mkdir()
+        source = self.root / "download.zip"
+        with zipfile.ZipFile(source, "w") as zf:
+            zf.writestr("telegram/cache/data.bin", b"x")
+        settings = normalized_power_settings({
+            "project_routes": {"VoxLyra": str(project_dir)},
+            "routes": {"Архивы": str(archive_dir)},
+        })
+        decision = choose_configured_target(source, settings, [], self.projects)
+        self.assertIsNotNone(decision)
+        self.assertEqual(str(archive_dir), decision["target_dir"])
+        self.assertEqual("explicit-category-route:Архивы", decision["reason"])
 
     def test_chatgpt_route_separates_explicitly_named_file(self):
         ai_dir = self.root / "ChatGPT"
