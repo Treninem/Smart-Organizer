@@ -77,6 +77,7 @@ def main() -> None:
         ("core.generic_compaction_runtime", "install_generic_compaction_runtime", "обучение контейнерам проектов"),
         ("core.final_safety_runtime", "install_final_safety_runtime", "финальный контроль плана"),
         ("core.adaptive_feedback_runtime", "install_adaptive_feedback_runtime", "локальное обучение и Undo"),
+        ("core.background_runtime", "install_background_runtime", "фон, автозапуск и умная сортировка загрузок"),
     ]
     for module_name, function_name, label in installers:
         try:
