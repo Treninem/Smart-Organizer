@@ -36,7 +36,7 @@ DEFAULT_POWER_SETTINGS = {
         "Другое": "",
     },
     "keep_latest_versions": 5,
-    "auto_quarantine_old_versions": True,
+    "auto_quarantine_old_versions": False,
     "auto_correct_own_moves": True,
     "strictness": "strict",
 }
@@ -106,13 +106,18 @@ def _mature_learning_target(record: dict, rules: list[dict]) -> tuple[Path | Non
 
 def _record_for_path(source: Path, projects: list[dict]) -> tuple[dict, dict]:
     profile = content_profile(source)
+    # Background project routing is intentionally based on the filename, not
+    # the current parent path. This prevents a file that Smart Organizer once
+    # placed into the wrong project folder from inheriting that folder's name
+    # and reinforcing the original mistake during self-correction.
+    hint = project_hint(Path(source.name), projects)
     record = {
         "path": str(source),
         "parent": str(source.parent),
         "name": source.name,
         "extension": profile["extension"],
         "category": profile["category"],
-        "project_hint": project_hint(source, projects),
+        "project_hint": hint,
     }
     return profile, record
 
