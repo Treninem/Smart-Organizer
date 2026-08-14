@@ -52,10 +52,18 @@ class VersionRetentionTests(unittest.TestCase):
             plan = build_version_retention_plan([], folders, keep_latest=5)
             self.assertEqual([], plan["items"])
 
+    def test_generic_release_family_is_rejected_to_avoid_cross_project_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            files = [self._file(root / f"release_v{i}.0.zip") for i in range(1, 8)]
+            plan = build_version_retention_plan(files, [], keep_latest=5)
+            self.assertEqual([], plan["items"])
+            self.assertGreater(plan["summary"]["generic_families_rejected"], 0)
+
     def test_quarantine_plan_is_reversible_operations_not_permanent_delete(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            files = [self._file(root / f"App_v{i}.0.zip") for i in range(1, 7)]
+            files = [self._file(root / f"MyTool_v{i}.0.zip") for i in range(1, 7)]
             plan = build_version_retention_plan(files, [], keep_latest=5)
             quarantine = root / "data" / "quarantine" / "versions"
             operations = quarantine_operations(plan, quarantine)
