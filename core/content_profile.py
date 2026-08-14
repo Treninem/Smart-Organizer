@@ -18,13 +18,14 @@ CODE_ARCHIVE_EXTENSIONS = {".zip", ".7z", ".rar", ".tar", ".gz", ".bz2", ".xz", 
 
 
 def origin_hint(path: Path | str) -> str:
-    """Return a conservative local origin hint from filename/path only.
+    """Return a conservative origin hint from the actual filename only.
 
-    The function deliberately does not claim provenance from content. It only
-    recognizes explicit filename/path markers such as ``ChatGPT Image`` or
-    ``DALL-E``. Unknown files remain ``unknown``.
+    Parent directories are intentionally excluded: a folder named ``ChatGPT``
+    must not make every unrelated file inside it look AI-generated, while a
+    downloaded filename such as ``ChatGPT Image ...png`` must still match even
+    when its full Windows path contains backslashes.
     """
-    value = str(path)
+    value = Path(str(path)).name
     for pattern in AI_NAME_PATTERNS:
         if pattern.search(value):
             return "chatgpt-openai"
