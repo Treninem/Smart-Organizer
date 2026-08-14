@@ -12,6 +12,7 @@ class ProjectCatalogTests(unittest.TestCase):
     def test_known_user_projects_are_separate_entries(self):
         expected = {
             "VoxLyra",
+            "BookVoxLyra",
             "Boostora",
             "ImPuls-Minecraft",
             "ImPuls",
@@ -30,12 +31,26 @@ class ProjectCatalogTests(unittest.TestCase):
         self.assertEqual(len(self.projects), len(self.payload["projects"]))
 
     def test_known_repositories_are_not_mixed(self):
-        self.assertEqual("Treninem/Voxlyra", self.projects["VoxLyra"]["repository"])
-        self.assertEqual("Treninem/ImPuls-Minecraft", self.projects["ImPuls-Minecraft"]["repository"])
-        self.assertEqual("Treninem/Impuls", self.projects["ImPuls"]["repository"])
-        self.assertEqual("Treninem/Proizvodstvo", self.projects["ProControl"]["repository"])
-        self.assertEqual("Treninem/Smart-Organizer", self.projects["Smart-Organizer"]["repository"])
-        self.assertEqual("Treninem/game", self.projects["Treninem-Game"]["repository"])
+        expected = {
+            "VoxLyra": "Treninem/Voxlyra",
+            "BookVoxLyra": "Treninem/bookvoxlyra",
+            "Boostora": "Treninem/Boostora",
+            "ImPuls-Minecraft": "Treninem/ImPuls-Minecraft",
+            "ImPuls": "Treninem/Impuls",
+            "ProControl": "Treninem/Proizvodstvo",
+            "Smart-Organizer": "Treninem/Smart-Organizer",
+            "Zveroboy": "Treninem/Zveroboy",
+            "LoveMi": "Treninem/LoveMi",
+            "Pubgbot": "Treninem/Pubgbot",
+            "Treninem-Game": "Treninem/game",
+        }
+        for project, repository in expected.items():
+            self.assertEqual(repository, self.projects[project]["repository"], project)
+        self.assertEqual(len(expected.values()), len(set(expected.values())))
+
+    def test_bookvoxlyra_is_separate_from_voxlyra_runtime(self):
+        self.assertNotEqual(self.projects["BookVoxLyra"]["repository"], self.projects["VoxLyra"]["repository"])
+        self.assertIn("import", self.projects["BookVoxLyra"]["type"].casefold())
 
     def test_template_catalog_is_broad(self):
         names = {item["name"] for item in self.payload["templates"]}
@@ -50,12 +65,13 @@ class ProjectCatalogTests(unittest.TestCase):
             "Drawings / CAD",
             "Comics Import Package",
             "Windows Runtime Release",
+            "VoxLyra Source Import Repository",
             "Single-player RPG / Survival Game",
             "Technical PDF Translation",
             "Comic / Manga Localization Package",
         ):
             self.assertIn(name, names)
-        self.assertGreaterEqual(len(names), 22)
+        self.assertGreaterEqual(len(names), 23)
 
 
 if __name__ == "__main__":
