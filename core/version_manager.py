@@ -37,6 +37,21 @@ class VersionInfo:
         return padded[:4] + (CHANNEL_RANK.get(self.channel, 0), self.qualifier_number)
 
 
+def _version_stem(value: str) -> str:
+    """Strip a real file extension but keep numeric dotted folder versions.
+
+    ``Path('Project_v1.15.9').stem`` would incorrectly become
+    ``Project_v1.15`` because ``.9`` looks like an extension. Numeric suffixes
+    are therefore treated as part of the name. Alphabetic/archive/document
+    extensions are still stripped normally.
+    """
+    name = Path(str(value)).name
+    suffix = Path(name).suffix
+    if suffix and suffix[1:].isdigit():
+        return name
+    return Path(name).stem
+
+
 def _looks_like_calendar_date(parts: tuple[int, ...], raw: str) -> bool:
     if re.match(r"(?i)^\s*(?:v|version)", raw):
         return False
@@ -56,15 +71,11 @@ def _plausible_match(match: re.Match) -> bool:
     if _looks_like_calendar_date(numeric_values, raw):
         return False
 
-    # Bare numbers in ordinary filenames are usually years, chapter numbers,
-    # dimensions or counters. Treat them as versions only when the author made
-    # the intent explicit (v12/version12), supplied a dotted version (1.2), or
-    # attached a release qualifier (12-beta).
     return explicit_prefix or numeric_components >= 2 or has_qualifier
 
 
 def detect_version(value: str) -> VersionInfo | None:
-    stem = Path(value).stem
+    stem = _version_stem(value)
     matches = [match for match in VERSION_RE.finditer(stem) if _plausible_match(match)]
     if not matches:
         return None
@@ -90,7 +101,7 @@ def detect_version(value: str) -> VersionInfo | None:
 
 
 def artifact_key(name: str) -> str:
-    stem = Path(name).stem
+    stem = _version_stem(name)
     stem = COPY_SUFFIX_RE.sub("", stem)
     matches = [match for match in VERSION_RE.finditer(stem) if _plausible_match(match)]
     match = matches[0] if matches else None
@@ -98,7 +109,7 @@ def artifact_key(name: str) -> str:
         stem = stem[: match.start()] + " " + stem[match.end() :]
     stem = re.sub(r"(?i)\b(?:final|latest|release|build)\b", " ", stem)
     stem = re.sub(r"[\W_]+", " ", stem, flags=re.UNICODE).strip().lower()
-    return stem or Path(name).stem.lower()
+    return stem or _version_stem(name).lower()
 
 
 def version_groups(records: Iterable[dict]) -> list[dict]:
