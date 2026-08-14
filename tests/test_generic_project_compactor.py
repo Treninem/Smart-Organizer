@@ -27,7 +27,7 @@ class GenericProjectCompactorTests(unittest.TestCase):
         beta = projects + r"\Beta"
         gamma = r"D:\Desk\Gamma"
         folders = [
-            self._folder(root, r"D:\", 0),
+            self._folder(root, "D:\\", 0),
             self._folder(projects, root, 1),
             self._folder(alpha, projects, 2),
             self._folder(beta, projects, 2),
@@ -52,7 +52,7 @@ class GenericProjectCompactorTests(unittest.TestCase):
         one = r"D:\Desk\One"
         two = r"D:\Desk\Two"
         loose = r"D:\Desk\Loose"
-        folders = [self._folder(root, r"D:\", 0), self._folder(one, root, 1), self._folder(two, root, 1), self._folder(loose, root, 1)]
+        folders = [self._folder(root, "D:\\", 0), self._folder(one, root, 1), self._folder(two, root, 1), self._folder(loose, root, 1)]
         files = [self._marker(loose, "main.py")]
         for container in (one, two):
             for child_name in ("A", "B"):
@@ -67,7 +67,7 @@ class GenericProjectCompactorTests(unittest.TestCase):
         root = r"D:\Desk"
         games = r"D:\Desk\Games"
         server = r"D:\Desk\Server"
-        folders = [self._folder(root, r"D:\", 0), self._folder(games, root, 1), self._folder(server, root, 1)]
+        folders = [self._folder(root, "D:\\", 0), self._folder(games, root, 1), self._folder(server, root, 1)]
         files = [self._marker(server, "server.properties")]
         for child_name in ("GameA", "GameB"):
             child = games + "\\" + child_name
@@ -81,7 +81,7 @@ class GenericProjectCompactorTests(unittest.TestCase):
         root = r"D:\Desk"
         container = r"D:\Desk\Работа"
         loose = r"D:\Desk\NewGame"
-        folders = [self._folder(root, r"D:\", 0), self._folder(container, root, 1), self._folder(loose, root, 1)]
+        folders = [self._folder(root, "D:\\", 0), self._folder(container, root, 1), self._folder(loose, root, 1)]
         files = [self._marker(loose, "project.godot")]
         for child_name in ("A", "B"):
             child = container + "\\" + child_name
