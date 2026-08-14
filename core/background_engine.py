@@ -10,9 +10,15 @@ from core.content_profile import content_profile
 from core.operation_executor import execute_batch
 from core.operation_journal import OperationJournal, ReversibleOperation
 from core.placement_learning import MATURE_CONFIRMATIONS, SETTINGS_KEY as LEARNING_KEY, record_signature
+from core.version_manager import detect_version
 from core.windows_paths import downloads_path
 
 POWER_SETTINGS_KEY = "power_settings_v1"
+GENERIC_PROJECT_FILENAMES = {
+    "main.py", "bot.py", "config.json", "settings.json", "requirements.txt", "pyproject.toml",
+    "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "dockerfile",
+    "compose.yml", "docker-compose.yml", "server.properties", "project.godot",
+}
 
 DEFAULT_POWER_SETTINGS = {
     "background_enabled": True,
@@ -106,10 +112,6 @@ def _mature_learning_target(record: dict, rules: list[dict]) -> tuple[Path | Non
 
 def _record_for_path(source: Path, projects: list[dict]) -> tuple[dict, dict]:
     profile = content_profile(source)
-    # Background project routing is intentionally based on the filename, not
-    # the current parent path. This prevents a file that Smart Organizer once
-    # placed into the wrong project folder from inheriting that folder's name
-    # and reinforcing the original mistake during self-correction.
     hint = project_hint(Path(source.name), projects)
     record = {
         "path": str(source),
@@ -120,6 +122,43 @@ def _record_for_path(source: Path, projects: list[dict]) -> tuple[dict, dict]:
         "project_hint": hint,
     }
     return profile, record
+
+
+def infer_project_routes(folders: list[dict], projects: list[dict]) -> dict[str, str]:
+    """Infer only unique top-level-looking existing project folders.
+
+    The folder's own name must uniquely identify the project. Nested folders do
+    not inherit evidence merely because an ancestor contains the project name.
+    An unversioned canonical folder wins over version folders. Multiple equally
+    plausible folders remain ambiguous and produce no background route.
+    """
+    result: dict[str, str] = {}
+    for project in projects:
+        project_name = str(project.get("name") or "").strip()
+        if not project_name:
+            continue
+        candidates: list[tuple[bool, int, str]] = []
+        for folder in folders:
+            path = str(folder.get("path") or "").strip()
+            name = str(folder.get("name") or Path(path).name).strip()
+            if not path or not name:
+                continue
+            if project_hint(Path(name), projects) != project_name:
+                continue
+            try:
+                depth = int(folder.get("depth", 0) or 0)
+            except (TypeError, ValueError):
+                depth = 0
+            candidates.append((detect_version(name) is None, depth, path))
+        if not candidates:
+            continue
+        unversioned = [item for item in candidates if item[0]]
+        pool = unversioned or candidates
+        min_depth = min(item[1] for item in pool)
+        winners = sorted({item[2] for item in pool if item[1] == min_depth}, key=str.casefold)
+        if len(winners) == 1 and Path(winners[0]).is_dir():
+            result[project_name] = winners[0]
+    return result
 
 
 def choose_configured_target(
@@ -143,6 +182,16 @@ def choose_configured_target(
         target = _existing_target(str(project_routes.get(project_name, "") or ""))
         if target is not None:
             reason = f"explicit-project-route:{project_name}"
+        if target is None:
+            inferred = settings.get("_inferred_project_routes") if isinstance(settings.get("_inferred_project_routes"), dict) else {}
+            target = _existing_target(str(inferred.get(project_name, "") or ""))
+            if target is not None:
+                reason = f"existing-project-folder:{project_name}"
+
+    # Generic project filenames are too ambiguous for background category or
+    # learned routing when the project itself was not identified.
+    if target is None and not project_name and source.name.casefold() in GENERIC_PROJECT_FILENAMES:
+        return None
 
     if target is None and settings.get("separate_chatgpt") and profile["is_ai_named"]:
         target = _existing_target(str(settings.get("chatgpt_target") or ""))
@@ -192,6 +241,7 @@ def collect_download_moves(database, projects: list[dict], now: float | None = N
     root = downloads_path()
     if not root.is_dir():
         return []
+    settings["_inferred_project_routes"] = infer_project_routes(database.snapshot_folders(), projects)
     learning = database.get_setting(LEARNING_KEY, []) or []
     timestamp = float(now if now is not None else time.time())
     result: list[dict] = []
@@ -235,7 +285,7 @@ def collect_corrections(database, projects: list[dict], limit: int = 1000) -> li
 
     A correction requires a newer explicit project/origin/category route. It
     never sweeps arbitrary user files and never relies on historical learning
-    alone, which prevents an old wrong habit from reinforcing itself.
+    or inferred folder names alone.
     """
     settings = normalized_power_settings(database.get_setting(POWER_SETTINGS_KEY, {}))
     if not settings.get("auto_correct_own_moves"):
