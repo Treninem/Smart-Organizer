@@ -28,10 +28,13 @@ class FrozenCompatibilityTests(unittest.TestCase):
         self.assertIn("--contents-directory _runtime", source)
         self.assertIn("SmartOrganizer-runtime.zip", source)
 
-    def test_bootstrap_has_frozen_self_test(self):
+    def test_bootstrap_has_frozen_self_test_and_external_stdlib_dependencies(self):
         source = Path("bootstrap.py").read_text(encoding="utf-8")
         self.assertIn("--self-test", source)
         self.assertIn("import ctypes as _ctypes_test", source)
+        self.assertIn("import uuid as _uuid_test", source)
+        self.assertIn("import zipfile as _zipfile_test", source)
+        self.assertIn("import zipfile", source)
 
     def test_recovery_updater_installs_verified_full_runtime(self):
         source = Path("updater_main.py").read_text(encoding="utf-8")
