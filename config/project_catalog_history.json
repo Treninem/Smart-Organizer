@@ -1,6 +1,56 @@
 {
-  "schema": 1,
+  "schema": 2,
   "projects": [
+    {
+      "name": "Boostora",
+      "type": "older bot project",
+      "repository": "Treninem/Boostora",
+      "aliases": ["Boostora bot"],
+      "folder_aliases": ["Boostora"],
+      "keywords": ["boostora", "boostora bot"],
+      "status": "legacy",
+      "notes": "Отдельный старый проект до VoxLyra. Никогда не смешивать с VoxLyra."
+    },
+    {
+      "name": "Zveroboy",
+      "type": "bot project",
+      "repository": "Treninem/Zveroboy",
+      "aliases": ["Зверобой"],
+      "folder_aliases": ["Zveroboy", "Зверобой"],
+      "keywords": ["zveroboy", "зверобой"],
+      "status": "legacy",
+      "notes": "Самостоятельный бот-проект с отдельной проектной границей."
+    },
+    {
+      "name": "LoveMi",
+      "type": "bot project",
+      "repository": "Treninem/LoveMi",
+      "aliases": ["Love Mi", "ЛавМи"],
+      "folder_aliases": ["LoveMi", "Love Mi"],
+      "keywords": ["lovemi", "love mi"],
+      "status": "legacy",
+      "notes": "Самостоятельный проект; не смешивать его main.py/config и ассеты с другими ботами."
+    },
+    {
+      "name": "Pubgbot",
+      "type": "bot project",
+      "repository": "Treninem/Pubgbot",
+      "aliases": ["PUBG bot", "PUBGbot"],
+      "folder_aliases": ["Pubgbot", "PUBGbot", "PUBG bot"],
+      "keywords": ["pubgbot", "pubg bot"],
+      "status": "legacy",
+      "notes": "Самостоятельный PUBG-бот; общие имена файлов не означают связь с другими проектами."
+    },
+    {
+      "name": "BookVoxLyra",
+      "type": "owner-controlled VoxLyra content import repository",
+      "repository": "Treninem/bookvoxlyra",
+      "aliases": ["BookVoxLyra", "bookvoxlyra", "VoxLyra Books", "VoxLyra Content Import"],
+      "folder_aliases": ["bookvoxlyra", "BookVoxLyra", "VoxLyra Books"],
+      "keywords": ["bookvoxlyra", "books import", "comics import", "audiobooks import", "import_index.json", "validate_packages.py"],
+      "status": "current",
+      "notes": "Source-only репозиторий проверенных пакетов импорта VoxLyra: books/comics/audiobooks. Это отдельный проектный контекст, не runtime-база VoxLyra."
+    },
     {
       "name": "Treninem-Game",
       "type": "single-player PC game",
@@ -19,7 +69,7 @@
       "folder_aliases": ["Документация", "Перевод документации", "PDF Translation"],
       "keywords": ["перевод документации", "оцифровка документации", "pdf translation", "manual translation", "translated manual"],
       "status": "current",
-      "notes": "Фото страниц, PDF, OCR/редактирование и перевод технической документации."
+      "notes": "Фото страниц, PDF, редактирование и перевод технической документации."
     },
     {
       "name": "Personal-Website",
@@ -33,6 +83,12 @@
     }
   ],
   "templates": [
+    {
+      "name": "VoxLyra Source Import Repository",
+      "type": "voxlyra-source-import",
+      "keywords": ["bookvoxlyra", "books", "comics", "audiobooks", "import package", "rights checked"],
+      "markers": ["manifests/import_index.json", "tools/validate_packages.py", "LICENSE.txt", "SOURCES.txt", "metadata.json", "cover.jpg"]
+    },
     {
       "name": "Single-player RPG / Survival Game",
       "type": "pc-game-singleplayer",
@@ -64,6 +120,12 @@
       "action": "prefer_unique_known_project_route_before_generic_file_category",
       "confidence": 1.0,
       "explanation": "Если скачанный файл однозначно относится к известному проекту и существует его целевая папка, проектный маршрут важнее общего маршрута Архивы/Код/Документы."
+    },
+    {
+      "id": "bookvoxlyra-separate-from-runtime",
+      "action": "keep_bookvoxlyra_import_packages_separate_from_voxlyra_runtime",
+      "confidence": 1.0,
+      "explanation": "BookVoxLyra — отдельный source/import-контекст. Его пакеты не должны смешиваться с runtime-файлами VoxLyra или локальной БД приложения."
     }
   ]
 }
