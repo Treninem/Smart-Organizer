@@ -39,6 +39,7 @@ def _self_test(root: Path) -> int:
     import uuid as _uuid_test  # noqa: F401
 
     if (root / "core").is_dir():
+        from core import adaptive_feedback_runtime as _adaptive_feedback_test  # noqa: F401
         from core import diagnostics as _diagnostics_test  # noqa: F401
         from core import diagnostics_ui_runtime as _diagnostics_ui_test  # noqa: F401
         from core import duplicate_insights as _duplicate_insights_test  # noqa: F401
