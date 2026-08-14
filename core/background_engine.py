@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from pathlib import Path
 
@@ -22,6 +23,7 @@ DEFAULT_POWER_SETTINGS = {
     "download_min_age_seconds": 120,
     "separate_chatgpt": True,
     "chatgpt_target": "",
+    "project_routes": {},
     "routes": {
         "Изображения": "",
         "Видео": "",
@@ -34,7 +36,8 @@ DEFAULT_POWER_SETTINGS = {
         "Другое": "",
     },
     "keep_latest_versions": 5,
-    "auto_quarantine_old_versions": False,
+    "auto_quarantine_old_versions": True,
+    "auto_correct_own_moves": True,
     "strictness": "strict",
 }
 
@@ -43,8 +46,8 @@ def normalized_power_settings(value) -> dict:
     result = json.loads(json.dumps(DEFAULT_POWER_SETTINGS, ensure_ascii=False))
     if isinstance(value, dict):
         for key, raw in value.items():
-            if key == "routes" and isinstance(raw, dict):
-                result["routes"].update({str(k): str(v or "") for k, v in raw.items()})
+            if key in {"routes", "project_routes"} and isinstance(raw, dict):
+                result[key].update({str(k): str(v or "") for k, v in raw.items()})
             elif key in result:
                 result[key] = raw
     try:
@@ -61,7 +64,11 @@ def normalized_power_settings(value) -> dict:
         result["keep_latest_versions"] = 5
     if result.get("strictness") not in {"strict", "balanced"}:
         result["strictness"] = "strict"
-    for key in ("background_enabled", "start_with_windows", "close_to_background", "auto_sort_downloads", "separate_chatgpt", "auto_quarantine_old_versions"):
+    for key in (
+        "background_enabled", "start_with_windows", "close_to_background",
+        "auto_sort_downloads", "separate_chatgpt", "auto_quarantine_old_versions",
+        "auto_correct_own_moves",
+    ):
         result[key] = bool(result.get(key))
     return result
 
@@ -97,22 +104,8 @@ def _mature_learning_target(record: dict, rules: list[dict]) -> tuple[Path | Non
     return Path(winners[0]), f"learned-after-{best}-confirmations"
 
 
-def choose_download_target(
-    source: Path,
-    settings: dict,
-    learning_rules: list[dict],
-    projects: list[dict],
-) -> dict | None:
-    """Choose a destination for one finished top-level downloaded file.
-
-    Explicit user routes outrank learning. ChatGPT/OpenAI filename markers can
-    be separated when that option has a real existing target folder. Learned
-    routes require repeated confirmations and a unique winner.
-    """
+def _record_for_path(source: Path, projects: list[dict]) -> tuple[dict, dict]:
     profile = content_profile(source)
-    if profile["is_partial_download"]:
-        return None
-
     record = {
         "path": str(source),
         "parent": str(source.parent),
@@ -121,10 +114,32 @@ def choose_download_target(
         "category": profile["category"],
         "project_hint": project_hint(source, projects),
     }
+    return profile, record
+
+
+def choose_configured_target(
+    source: Path,
+    settings: dict,
+    learning_rules: list[dict],
+    projects: list[dict],
+    *,
+    allow_learning: bool = True,
+) -> dict | None:
+    """Choose one strict destination from project/origin/category/local memory."""
+    profile, record = _record_for_path(source, projects)
+    if profile["is_partial_download"]:
+        return None
 
     target: Path | None = None
     reason = ""
-    if settings.get("separate_chatgpt") and profile["is_ai_named"]:
+    project_name = str(record.get("project_hint") or "")
+    project_routes = settings.get("project_routes") if isinstance(settings.get("project_routes"), dict) else {}
+    if project_name:
+        target = _existing_target(str(project_routes.get(project_name, "") or ""))
+        if target is not None:
+            reason = f"explicit-project-route:{project_name}"
+
+    if target is None and settings.get("separate_chatgpt") and profile["is_ai_named"]:
         target = _existing_target(str(settings.get("chatgpt_target") or ""))
         if target is not None:
             reason = "explicit-chatgpt-route"
@@ -135,13 +150,13 @@ def choose_download_target(
         if target is not None:
             reason = f"explicit-category-route:{profile['category']}"
 
-    if target is None:
+    if target is None and allow_learning:
         target, learned_reason = _mature_learning_target(record, learning_rules)
         reason = learned_reason
 
     if target is None:
         return None
-    if target.resolve() == source.parent.resolve():
+    if os.path.normcase(os.path.normpath(str(target))) == os.path.normcase(os.path.normpath(str(source.parent))):
         return None
     destination = target / source.name
     if destination.exists():
@@ -154,6 +169,15 @@ def choose_download_target(
         "record": record,
         "reason": reason,
     }
+
+
+def choose_download_target(
+    source: Path,
+    settings: dict,
+    learning_rules: list[dict],
+    projects: list[dict],
+) -> dict | None:
+    return choose_configured_target(source, settings, learning_rules, projects, allow_learning=True)
 
 
 def collect_download_moves(database, projects: list[dict], now: float | None = None) -> list[dict]:
@@ -182,7 +206,6 @@ def collect_download_moves(database, projects: list[dict], now: float | None = N
 
 
 def apply_download_moves(database, projects: list[dict]) -> dict:
-    """Apply only explicitly configured or mature learned background routes."""
     decisions = collect_download_moves(database, projects)
     if not decisions:
         return {"moved": 0, "batch_id": None, "decisions": []}
@@ -200,3 +223,55 @@ def apply_download_moves(database, projects: list[dict]) -> dict:
         f"moved={result['applied']}; routes=" + ",".join(item["reason"] for item in decisions),
     )
     return {"moved": result["applied"], "batch_id": batch_id, "decisions": decisions}
+
+
+def collect_corrections(database, projects: list[dict], limit: int = 1000) -> list[dict]:
+    """Correct only Smart Organizer's own still-applied moves.
+
+    A correction requires a newer explicit project/origin/category route. It
+    never sweeps arbitrary user files and never relies on historical learning
+    alone, which prevents an old wrong habit from reinforcing itself.
+    """
+    settings = normalized_power_settings(database.get_setting(POWER_SETTINGS_KEY, {}))
+    if not settings.get("auto_correct_own_moves"):
+        return []
+    learning = database.get_setting(LEARNING_KEY, []) or []
+    seen: set[str] = set()
+    result: list[dict] = []
+    for row in database.operation_entries(limit=limit):
+        if row.get("status") != "applied" or row.get("op_type") not in {"move", "rename"}:
+            continue
+        current = Path(str(row.get("target") or ""))
+        if not current.is_file():
+            continue
+        key = os.path.normcase(os.path.normpath(str(current)))
+        if key in seen:
+            continue
+        seen.add(key)
+        decision = choose_configured_target(current, settings, learning, projects, allow_learning=False)
+        if not decision or not str(decision.get("reason") or "").startswith("explicit-"):
+            continue
+        decision["previous_batch_id"] = row.get("batch_id")
+        decision["original_source"] = row.get("source")
+        result.append(decision)
+    return result
+
+
+def apply_corrections(database, projects: list[dict]) -> dict:
+    decisions = collect_corrections(database, projects)
+    if not decisions:
+        return {"corrected": 0, "batch_id": None, "decisions": []}
+    journal = OperationJournal(database)
+    operations = [
+        ReversibleOperation("move", item["source"], item["target_path"], f"self-correction: {item['reason']}")
+        for item in decisions
+    ]
+    batch_id = journal.plan_batch(operations, label="self-correction")
+    execution = execute_batch(journal, batch_id)
+    database.log_action(
+        "self-correction",
+        batch_id,
+        "ok",
+        f"corrected={execution['applied']}; only_own_previous_moves=1",
+    )
+    return {"corrected": execution["applied"], "batch_id": batch_id, "decisions": decisions}
