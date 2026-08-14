@@ -83,7 +83,10 @@ def content_profile(path: Path | str) -> dict:
         "media_kind": media_kind,
         "origin": origin,
         "origin_evidence": "filename" if filename_ai else ("metadata" if metadata_ai else "none"),
-        "is_ai_named": filename_ai,
+        # Compatibility key used by the existing background router. It now means
+        # "explicit AI provenance" rather than filename-only evidence.
+        "is_ai_named": origin == "chatgpt-openai",
+        "is_ai_filename": filename_ai,
         "is_ai_origin": origin == "chatgpt-openai",
         "is_partial_download": extension in PARTIAL_DOWNLOAD_EXTENSIONS,
         "is_archive": extension in CODE_ARCHIVE_EXTENSIONS,
