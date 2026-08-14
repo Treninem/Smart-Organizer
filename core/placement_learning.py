@@ -216,6 +216,7 @@ def apply_confirmed_learning(
     boosted = 0
     ambiguous = 0
     pending = 0
+    already_in_learned_place = 0
 
     for raw in plan.get("items", []):
         item = dict(raw)
@@ -275,6 +276,15 @@ def apply_confirmed_learning(
         if not target_dir or not destination_allowed_by_layout(record, target_dir, files, scan_root):
             items.append(item)
             continue
+
+        # If the mature rule points to the file's current parent, historical
+        # memory confirms that the file is already where it belongs. Suppress a
+        # weaker proposal to move it elsewhere instead of manufacturing a no-op.
+        if _norm(target_dir) == _norm(record.get("parent") or ""):
+            already_in_learned_place += 1
+            result["summary"]["already_placed"] = int(result["summary"].get("already_placed", 0)) + 1
+            continue
+
         target_path = str(Path(target_dir) / str(record.get("name") or Path(source).name))
         if any(_norm(other.get("path") or "") == _norm(target_path) for other in files):
             items.append(item)
@@ -301,4 +311,6 @@ def apply_confirmed_learning(
     result["summary"]["learned_moves_boosted"] = boosted
     result["summary"]["learned_moves_ambiguous"] = ambiguous
     result["summary"]["learned_moves_pending"] = pending
+    result["summary"]["learned_already_placed"] = already_in_learned_place
+    result["summary"]["moves_suggested"] = len(items)
     return result
