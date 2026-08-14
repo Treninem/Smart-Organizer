@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from pathlib import Path
 
+from core.archive_analyzer import ARCHIVE_EXTENSIONS as INSPECTABLE_ARCHIVES, analyze_archive
 from core.classifier import project_hint
 from core.content_profile import content_profile
 from core.operation_executor import execute_batch
@@ -19,6 +21,7 @@ GENERIC_PROJECT_FILENAMES = {
     "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "dockerfile",
     "compose.yml", "docker-compose.yml", "server.properties", "project.godot",
 }
+MAX_BACKGROUND_ARCHIVE_INSPECTION_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_POWER_SETTINGS = {
     "background_enabled": True,
@@ -86,6 +89,10 @@ def _existing_target(value: str) -> Path | None:
     return path if path.is_dir() else None
 
 
+def _normalized_phrase(value: str) -> str:
+    return " ".join(re.sub(r"[^\w]+", " ", str(value).casefold(), flags=re.UNICODE).split())
+
+
 def _mature_learning_target(record: dict, rules: list[dict]) -> tuple[Path | None, str]:
     signature = record_signature(record)
     candidates: list[tuple[int, Path]] = []
@@ -124,26 +131,65 @@ def _record_for_path(source: Path, projects: list[dict]) -> tuple[dict, dict]:
     return profile, record
 
 
-def infer_project_routes(folders: list[dict], projects: list[dict]) -> dict[str, str]:
-    """Infer only unique top-level-looking existing project folders.
+def _strict_archive_project_hint(source: Path, projects: list[dict]) -> str | None:
+    """Read archive file names only and accept a project only with strong evidence.
 
-    The folder's own name must uniquely identify the project. Nested folders do
-    not inherit evidence merely because an ancestor contains the project name.
-    An unversioned canonical folder wins over version folders. Multiple equally
-    plausible folders remain ambiguous and produce no background route.
+    This allows a generically named downloaded archive (for example
+    ``download.zip``) to reach an already-known project folder when its internal
+    paths clearly contain the project identity. Payload files are never
+    extracted or executed. Generic hints such as ``telegram`` alone are too weak.
+    """
+    if source.suffix.casefold() not in INSPECTABLE_ARCHIVES:
+        return None
+    try:
+        if source.stat().st_size > MAX_BACKGROUND_ARCHIVE_INSPECTION_BYTES:
+            return None
+        report = analyze_archive(source, projects)
+    except Exception:
+        return None
+    hint = str(report.get("project_hint") or "").strip()
+    scored = list(report.get("project_scores") or [])
+    if not hint or not scored:
+        return None
+    try:
+        best_score = int(scored[0][0])
+        best_name = str(scored[0][1])
+        second_score = int(scored[1][0]) if len(scored) > 1 else 0
+    except (TypeError, ValueError, IndexError):
+        return None
+    if best_name != hint or best_score < 4 or best_score - second_score < 2:
+        return None
+    return hint
+
+
+def infer_project_routes(folders: list[dict], projects: list[dict]) -> dict[str, str]:
+    """Infer only unique existing project folders from strong folder identity.
+
+    Exact ``folder_aliases`` are preferred because they let a project use a
+    short on-disk name such as ``game`` without making the generic word ``game``
+    a classifier keyword for every downloaded file. Otherwise the normal
+    ambiguity-safe project classifier is used. Multiple equally plausible
+    folders stay unresolved.
     """
     result: dict[str, str] = {}
     for project in projects:
         project_name = str(project.get("name") or "").strip()
         if not project_name:
             continue
+        exact_folder_names = {
+            _normalized_phrase(value)
+            for value in project.get("folder_aliases", [])
+            if _normalized_phrase(value)
+        }
         candidates: list[tuple[bool, int, str]] = []
         for folder in folders:
             path = str(folder.get("path") or "").strip()
             name = str(folder.get("name") or Path(path).name).strip()
             if not path or not name:
                 continue
-            if project_hint(Path(name), projects) != project_name:
+            normalized_name = _normalized_phrase(name)
+            exact_alias_match = bool(exact_folder_names and normalized_name in exact_folder_names)
+            if not exact_alias_match and project_hint(Path(name), projects) != project_name:
                 continue
             try:
                 depth = int(folder.get("depth", 0) or 0)
@@ -174,9 +220,14 @@ def choose_configured_target(
     if profile["is_partial_download"]:
         return None
 
+    project_name = str(record.get("project_hint") or "")
+    if not project_name and profile["category"] == "Архивы":
+        project_name = _strict_archive_project_hint(source, projects) or ""
+        if project_name:
+            record["project_hint"] = project_name
+
     target: Path | None = None
     reason = ""
-    project_name = str(record.get("project_hint") or "")
     project_routes = settings.get("project_routes") if isinstance(settings.get("project_routes"), dict) else {}
     if project_name:
         target = _existing_target(str(project_routes.get(project_name, "") or ""))
