@@ -1,3 +1,4 @@
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,6 +12,22 @@ class ContentProfileTests(unittest.TestCase):
         self.assertEqual("chatgpt-openai", origin_hint(Path("DALL-E_render.webp")))
         self.assertEqual("chatgpt-openai", origin_hint(Path("sora-video.mp4")))
         self.assertEqual("unknown", origin_hint(Path("family-photo.png")))
+
+    def test_explicit_openai_image_metadata_survives_rename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "renamed-image.png"
+            path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"tEXtSoftware\x00OpenAI GPT-Image" + b"x" * 64)
+            profile = content_profile(path)
+            self.assertEqual("chatgpt-openai", profile["origin"])
+            self.assertEqual("metadata", profile["origin_evidence"])
+            self.assertTrue(profile["is_ai_origin"])
+            self.assertFalse(profile["is_ai_filename"])
+
+    def test_ordinary_image_metadata_does_not_create_ai_origin(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "camera.png"
+            path.write_bytes(b"\x89PNG\r\n\x1a\n" + b"tEXtSoftware\x00CameraVendor" + b"x" * 64)
+            self.assertEqual("unknown", origin_hint(path))
 
     def test_modern_media_formats_are_classified(self):
         self.assertEqual("Изображения", category_for(Path("photo.heic")))
