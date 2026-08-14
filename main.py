@@ -52,7 +52,11 @@ def _run_app_self_test(app) -> None:
     for screen in screens:
         screen()
         app.update_idletasks()
-    app.on_close()
+    force_exit = getattr(app, "_force_exit_app", None)
+    if callable(force_exit):
+        force_exit()
+    else:
+        app.on_close()
 
 
 def main() -> None:
