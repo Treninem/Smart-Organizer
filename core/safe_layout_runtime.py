@@ -5,6 +5,11 @@ from tkinter import messagebox
 
 from core.operation_executor import execute_batch
 from core.operation_journal import OperationJournal
+from core.placement_learning import (
+    SETTINGS_KEY as PLACEMENT_LEARNING_KEY,
+    apply_confirmed_learning,
+    remember_confirmed_items,
+)
 from core.plan_bridge import operations_from_confirmed_sort_plan
 from core.scanner import scan_tree
 from core.sort_planner import build_sort_plan
@@ -66,16 +71,39 @@ def install_safe_layout_runtime(main_window) -> None:
         rules = self.db.get_setting(UNDO_FEEDBACK_KEY, []) or []
         return apply_undo_feedback(plan, rules)
 
+    def _with_confirmed_learning(self, plan: dict) -> dict:
+        if plan.get("learning_applied"):
+            return plan
+        files = self.db.snapshot_files()
+        folders = self.db.snapshot_folders()
+        rules = self.db.get_setting(PLACEMENT_LEARNING_KEY, []) or []
+        return apply_confirmed_learning(
+            plan,
+            files,
+            folders,
+            rules,
+            self.db.get_setting("last_scan_root"),
+        )
+
     def _current_safe_plan(self) -> dict:
-        return build_sort_plan(
-            self.db.snapshot_files(),
-            self.db.snapshot_folders(),
+        files = self.db.snapshot_files()
+        folders = self.db.snapshot_folders()
+        base = build_sort_plan(
+            files,
+            folders,
             self.knowledge.get("projects", []),
+            self.db.get_setting("last_scan_root"),
+        )
+        return apply_confirmed_learning(
+            base,
+            files,
+            folders,
+            self.db.get_setting(PLACEMENT_LEARNING_KEY, []) or [],
             self.db.get_setting("last_scan_root"),
         )
 
     def _render_plan(self, plan: dict) -> None:
-        plan = _with_undo_memory(self, plan)
+        plan = _with_undo_memory(self, _with_confirmed_learning(self, plan))
         if not hasattr(self, "file_results") or not self.file_results.winfo_exists():
             return
         box = self.file_results
@@ -102,6 +130,10 @@ def install_safe_layout_runtime(main_window) -> None:
             f"Надёжных перемещений в существующие папки: {len(executable)}\n"
             f"Подтверждаемых группировок папок-версий: {len(family_creation)}\n"
             f"Определено по вашей текущей раскладке: {summary.get('learned_user_layout_targets', 0)}\n"
+            f"Локальных правил размещения: {summary.get('learned_rules', 0)} "
+            f"(надёжных {summary.get('mature_learned_rules', 0)}, обучаются {summary.get('pending_learned_rules', 0)})\n"
+            f"Решений усилено вашей историей подтверждений: {summary.get('learned_moves_boosted', 0)}\n"
+            f"Конфликтов памяти остановлено: {summary.get('learned_moves_ambiguous', 0)}\n"
             f"Заблокировано памятью Undo: {summary.get('blocked_by_undo_memory', 0)}\n"
             f"Неуверенных предложений, которые НЕ будут выполнены: {len(review)}\n\n",
         )
@@ -133,7 +165,12 @@ def install_safe_layout_runtime(main_window) -> None:
                 "Для этих элементов программа не нашла достаточно надёжного решения:\n",
             )
             for item in review[:80]:
-                status = "ранее это направление уже отменяли через Undo" if item.get("confidence") == "rejected" else "оставить на месте до более уверенного решения"
+                if item.get("confidence") == "rejected":
+                    status = "ранее это направление уже отменяли через Undo"
+                elif item.get("reason") == "conflicting_confirmed_learning":
+                    status = "локальная память знает несколько равноценных мест — решение остановлено"
+                else:
+                    status = "оставить на месте до более уверенного решения"
                 box.insert(
                     "end",
                     f"\n• {item.get('source', '')}\n"
@@ -145,7 +182,8 @@ def install_safe_layout_runtime(main_window) -> None:
             "end",
             "\n\nЗащита: одинаковые main.py/config.json в разных проектах не объединяются; "
             "внутренности проектов и версий не смешиваются; существующие цели не перезаписываются; "
-            "неуверенные и ранее отменённые направления не исполняются.\n",
+            "одно подтверждение ещё не становится автоматическим правилом; "
+            "неуверенные, конфликтующие и ранее отменённые направления не исполняются.\n",
         )
 
     def organize_current(self) -> None:
@@ -214,7 +252,8 @@ def install_safe_layout_runtime(main_window) -> None:
             f"Неуверенных предложений останется на месте: {skipped}.\n\n"
             + "\n".join(preview_lines)
             + "\n\nПапки перемещаются целиком, внутренние main.py/config.json и другие файлы не смешиваются. "
-              "Существующие цели не перезаписываются. Весь пакет проверяется заранее и доступен для Undo. Применить?",
+              "Существующие цели не перезаписываются. После успешного подтверждения Smart Organizer запоминает только общий безопасный шаблон размещения; "
+              "одного подтверждения недостаточно для автоматического правила. Весь пакет проверяется заранее и доступен для Undo. Применить?",
         )
         if not confirmed:
             self.status_var.set("План показан, но не применён.")
@@ -234,21 +273,24 @@ def install_safe_layout_runtime(main_window) -> None:
 
         def done(payload):
             result, _refreshed = payload
+            learned = remember_confirmed_items(self.db, actionable)
             self.db.log_action(
                 "safe-layout-organize",
                 batch_id,
                 "ok",
-                f"applied={result['applied']}; files={file_moves}; folders={folder_moves}; created_dirs={created_dirs}; skipped_uncertain={skipped}",
+                f"applied={result['applied']}; files={file_moves}; folders={folder_moves}; created_dirs={created_dirs}; "
+                f"skipped_uncertain={skipped}; learned_examples={learned}",
             )
             self.refresh_dashboard()
             self._render_stable_files_screen()
             if self.db.snapshot_files() or self.db.snapshot_folders():
                 self._render_plan(self._current_safe_plan())
             self.status_var.set(
-                f"Порядок применён: файлов {file_moves}, папок {folder_moves}. Неуверенных оставлено: {skipped}. Undo доступен."
+                f"Порядок применён: файлов {file_moves}, папок {folder_moves}. Неуверенных оставлено: {skipped}. "
+                f"Новых примеров для локального обучения: {learned}. Undo доступен."
             )
 
-        self._start_worker("Применяю только проверенный план порядка…", work, done)
+        self._start_worker("Применяю проверенный план и обновляю локальную память…", work, done)
 
     cls._current_safe_plan = _current_safe_plan
     cls._render_plan = _render_plan
