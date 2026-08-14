@@ -1,9 +1,9 @@
 {
-  "schema": 2,
+  "schema": 3,
   "principles": [
     "Сначала изучай существующую структуру пользователя; никогда не перестраивай её ради собственного шаблона.",
     "Если подходящая папка уже существует, предпочитай её созданию новой.",
-    "Планирование не меняет файловую систему. Перемещение, переименование и карантин выполняются только после отдельного подтверждения; существующие целевые файлы не перезаписываются; применённые операции должны иметь Undo.",
+    "Планирование не меняет файловую систему. Перемещение, переименование и карантин выполняются только после отдельного подтверждения или по явно включённому строгому фоновому правилу; существующие целевые файлы не перезаписываются; применённые операции должны иметь Undo.",
     "Точная копия определяется содержимым (SHA-256), а не только похожим именем или размером.",
     "Даже полностью одинаковые файлы в разных проектах являются независимыми проектными файлами и не должны считаться удаляемыми дубликатами. Например, main.py в двух разных проектах защищён от объединения и карантина.",
     "Разные версии одного проекта не являются дубликатами автоматически.",
@@ -12,19 +12,19 @@
   "projects": [
     {
       "name": "VoxLyra",
-      "type": "Telegram/VK bot + Mini App",
-      "repository": null,
-      "aliases": ["Vox Lyra", "VoxlyraBot"],
-      "keywords": ["voxlyra", "vox", "comic", "comics", "reader", "library", "manga", "manhwa", "telegram", "vk", "mini app", "books_import"],
+      "type": "Telegram/VK bot + Mini App + reading platform",
+      "repository": "Treninem/Voxlyra",
+      "aliases": ["Vox Lyra", "VoxlyraBot", "Voxlyra"],
+      "keywords": ["voxlyra", "voxlyrabot", "comic", "comics", "reader", "library", "manga", "manhwa", "webtoon", "telegram", "vk", "mini app", "books_import", "vox:intent"],
       "status": "current",
-      "notes": "Расширенный текущий проект чтения. Не путать со старым Boostora."
+      "notes": "Платформа чтения, Telegram/VK и Mini App. Не путать со старым Boostora."
     },
     {
       "name": "Boostora",
       "type": "older bot project",
       "repository": null,
       "aliases": ["Boostora bot"],
-      "keywords": ["boostora"],
+      "keywords": ["boostora", "boostora bot"],
       "status": "legacy",
       "notes": "Более ранний проект до VoxLyra. Не считать файлы Boostora актуальными файлами VoxLyra без дополнительных признаков."
     },
@@ -32,17 +32,26 @@
       "name": "ImPuls-Minecraft",
       "type": "Minecraft server",
       "repository": "Treninem/ImPuls-Minecraft",
-      "aliases": ["ImPuls Minecraft", "Minecraft ImPuls"],
-      "keywords": ["impuls", "minecraft", "datapack", "plugin", "plugins", "world", "server.properties", "minekeep"],
+      "aliases": ["ImPuls Minecraft", "Minecraft ImPuls", "ImPulsCore"],
+      "keywords": ["impuls minecraft", "minecraft", "impulscore", "datapack", "plugin", "plugins", "world", "server.properties", "minekeep", "paper", "spigot"],
       "status": "current",
-      "notes": "Minecraft-проект. Не путать с другими проектами ImPuls."
+      "notes": "Minecraft-сервер ImPuls. Не путать с отдельным проектом Treninem/Impuls."
+    },
+    {
+      "name": "ImPuls",
+      "type": "bot / simulation project",
+      "repository": "Treninem/Impuls",
+      "aliases": ["Impuls bot", "ImPuls bot"],
+      "keywords": ["treninem impuls", "impuls bot", "simulation", "моделирование"],
+      "status": "current",
+      "notes": "Отдельный проект ImPuls; не Minecraft."
     },
     {
       "name": "ProControl",
       "type": "production Telegram bot + Mini App",
       "repository": "Treninem/Proizvodstvo",
-      "aliases": ["ProControl", "ProChckbot", "Производство"],
-      "keywords": ["procontrol", "prochck", "production", "factory", "miniapp", "склад", "производство", "фасовка", "экструзия"],
+      "aliases": ["ProControl", "ProChckbot", "Производство", "Proizvodstvo"],
+      "keywords": ["procontrol", "prochck", "prochckbot", "proizvodstvo", "production", "factory", "miniapp", "склад", "производство", "фасовка", "экструзия", "warehouse", "inventory"],
       "status": "current",
       "notes": "Производственный учёт. Данные разных компаний нельзя смешивать."
     },
@@ -50,10 +59,55 @@
       "name": "Smart-Organizer",
       "type": "Windows desktop utility",
       "repository": "Treninem/Smart-Organizer",
-      "aliases": ["Smart Organizer"],
-      "keywords": ["smart organizer", "smart-organizer", "knowledge.db", "file sorter"],
+      "aliases": ["Smart Organizer", "SmartOrganizer"],
+      "keywords": ["smart organizer", "smart-organizer", "smartorganizer", "knowledge.db", "file sorter", "runtime-manifest"],
       "status": "current",
       "notes": "Собственные файлы программы. data/ и logs/ локальные и не заменяются обновлением."
+    },
+    {
+      "name": "Zveroboy",
+      "type": "bot project",
+      "repository": null,
+      "aliases": ["Зверобой"],
+      "keywords": ["zveroboy", "зверобой"],
+      "status": "legacy",
+      "notes": "Ранее обсуждавшийся отдельный бот-проект. Не смешивать с другими ботами."
+    },
+    {
+      "name": "LoveMi",
+      "type": "bot project",
+      "repository": null,
+      "aliases": ["Love Mi", "ЛавМи"],
+      "keywords": ["lovemi", "love mi"],
+      "status": "legacy",
+      "notes": "Ранее обсуждавшийся отдельный проект."
+    },
+    {
+      "name": "Pubgbot",
+      "type": "bot project",
+      "repository": null,
+      "aliases": ["PUBG bot", "PUBGbot"],
+      "keywords": ["pubgbot", "pubg bot", "pubg"],
+      "status": "legacy",
+      "notes": "Ранее обсуждавшийся отдельный бот-проект."
+    },
+    {
+      "name": "Open-World-Survival-Game",
+      "type": "game design / survival simulation",
+      "repository": null,
+      "aliases": ["Игра про выживание", "Open World Survival", "Survival Game"],
+      "keywords": ["survival", "open world", "craft", "crafting", "economy", "building", "technology", "biology", "physics", "chemistry", "выживание", "открытый мир", "крафт", "экономика"],
+      "status": "concept",
+      "notes": "Концепт отдельной реалистичной игры; не смешивать с Minecraft ImPuls."
+    },
+    {
+      "name": "Extrusion-Calibrator",
+      "type": "CAD / engineering documentation",
+      "repository": null,
+      "aliases": ["Вакуумный калибратор", "Экструзия", "Калибратор"],
+      "keywords": ["calibrator", "vacuum calibrator", "extrusion", "экструзия", "калибратор", "вакуум", "сопловая втулка", "dxf", "dwg", "step", "3d model"],
+      "status": "current",
+      "notes": "Инженерные расчёты, чертежи и 3D-модели вакуумного калибратора."
     }
   ],
   "templates": [
@@ -64,10 +118,40 @@
       "markers": ["requirements.txt", "bot.py", "main.py", "app", "handlers", "static", "templates"]
     },
     {
+      "name": "Telegram Bot",
+      "type": "telegram-bot",
+      "keywords": ["telegram", "bot", "aiogram", "telebot", "pyrogram"],
+      "markers": ["bot.py", "handlers", "keyboards", "middlewares", "requirements.txt"]
+    },
+    {
+      "name": "VK Bot",
+      "type": "vk-bot",
+      "keywords": ["vk", "vkontakte", "long poll", "vk_api", "community"],
+      "markers": ["vk.py", "handlers", "requirements.txt", "main.py"]
+    },
+    {
+      "name": "FastAPI Service",
+      "type": "python-web-service",
+      "keywords": ["fastapi", "uvicorn", "api", "backend"],
+      "markers": ["main.py", "requirements.txt", "pyproject.toml", "app", "routers"]
+    },
+    {
+      "name": "Python Desktop App",
+      "type": "desktop-python",
+      "keywords": ["tkinter", "pyinstaller", "desktop", "windows app"],
+      "markers": ["main.py", "bootstrap.py", "requirements.txt", "core", "app"]
+    },
+    {
       "name": "Minecraft Server",
       "type": "minecraft-server",
       "keywords": ["minecraft", "paper", "spigot", "datapack", "plugin", "minekeep"],
       "markers": ["server.properties", "plugins", "world", "datapacks", "paper-global.yml"]
+    },
+    {
+      "name": "Minecraft Datapack",
+      "type": "minecraft-datapack",
+      "keywords": ["minecraft", "datapack", "function", "mcfunction"],
+      "markers": ["pack.mcmeta", "data", "functions", "tags"]
     },
     {
       "name": "Game Project",
@@ -76,10 +160,34 @@
       "markers": ["project.godot", "Assets", "ProjectSettings", "Content", "Scenes", "Scripts"]
     },
     {
+      "name": "Godot Game",
+      "type": "godot-game",
+      "keywords": ["godot", "gdscript", "tscn"],
+      "markers": ["project.godot", "addons", "scenes", "scripts"]
+    },
+    {
+      "name": "Unity Game",
+      "type": "unity-game",
+      "keywords": ["unity", "csharp", "game"],
+      "markers": ["Assets", "Packages", "ProjectSettings"]
+    },
+    {
+      "name": "Unreal Game",
+      "type": "unreal-game",
+      "keywords": ["unreal", "ue5", "blueprint", "game"],
+      "markers": ["Content", "Config", "Source", "Plugins"]
+    },
+    {
       "name": "Website",
       "type": "website",
       "keywords": ["website", "frontend", "backend", "react", "vue", "next", "html", "css"],
       "markers": ["package.json", "index.html", "src", "public", "static", "templates"]
+    },
+    {
+      "name": "React / Next Web",
+      "type": "react-web",
+      "keywords": ["react", "next", "nextjs", "typescript", "frontend"],
+      "markers": ["package.json", "src", "app", "pages", "public", "next.config.js"]
     },
     {
       "name": "Production System",
@@ -88,10 +196,34 @@
       "markers": ["production", "warehouse", "inventory", "reports", "bot", "miniapp"]
     },
     {
+      "name": "Library / Reader Platform",
+      "type": "reader-library",
+      "keywords": ["reader", "library", "books", "comic", "manga", "manhwa", "epub", "cbz", "cbr"],
+      "markers": ["Books", "Comics", "Chapters", "metadata.json", "books_import.json"]
+    },
+    {
       "name": "Drawings / CAD",
       "type": "cad-drawings",
       "keywords": ["drawing", "cad", "чертёж", "чертеж", "model", "3d", "step", "dxf", "dwg"],
       "markers": ["Drawings", "CAD", "Models", "STEP", "DXF", "DWG"]
+    },
+    {
+      "name": "Engineering Documentation",
+      "type": "engineering-docs",
+      "keywords": ["drawing", "calculation", "specification", "чертёж", "расчёт", "спецификация", "экструзия"],
+      "markers": ["PDF", "DOCX", "Drawings", "Models", "Calculations"]
+    },
+    {
+      "name": "Comics Import Package",
+      "type": "voxlyra-import",
+      "keywords": ["comics", "manga", "manhwa", "webtoon", "voxlyra", "import"],
+      "markers": ["metadata.json", "description.txt", "LICENSE.txt", "SOURCES.txt", "Chapters", "cover.jpg"]
+    },
+    {
+      "name": "Windows Runtime Release",
+      "type": "windows-release",
+      "keywords": ["windows", "runtime", "installer", "release", "pyinstaller"],
+      "markers": ["SmartOrganizer.exe", "updater.exe", "runtime-manifest.json", "version.json"]
     }
   ],
   "rules": [
@@ -124,6 +256,18 @@
       "action": "never_replace_data_directory_during_update",
       "confidence": 1.0,
       "explanation": "knowledge.db, projects.json, rules.json, versions.json, history.json и decisions.json являются локальной памятью."
+    },
+    {
+      "id": "background-explicit-routes-first",
+      "action": "background_moves_require_existing_explicit_or_mature_route",
+      "confidence": 1.0,
+      "explanation": "Фоновая сортировка не угадывает: проектный маршрут, ChatGPT/OpenAI-маршрут или маршрут категории должен вести в существующую папку; иначе требуется зрелое локальное обучение."
+    },
+    {
+      "id": "self-correct-own-moves-only",
+      "action": "correct_only_applied_journal_moves_when_stricter_route_exists",
+      "confidence": 1.0,
+      "explanation": "Автоисправление не трогает произвольные пользовательские файлы: оно может исправлять только собственные ранее применённые перемещения Smart Organizer при появлении более точного явного маршрута."
     }
   ]
 }
