@@ -12,11 +12,17 @@ PROJECT_MARKERS = {
     "server.properties", "project.godot", "cargo.toml", "go.mod", "pom.xml",
     "dockerfile", "compose.yml", "docker-compose.yml", "docker-compose.yaml",
 }
+GENERIC_ARTIFACT_KEYS = {
+    "release", "build", "version", "versions", "app", "application", "project",
+    "backup", "archive", "source", "sources", "code", "latest", "final",
+}
 
 
-def _versioned(value: str) -> tuple | None:
-    info = detect_version(value)
-    return info.sort_key if info else None
+def _safe_family_key(name: str) -> str | None:
+    key = artifact_key(name).strip().casefold()
+    if not key or key in GENERIC_ARTIFACT_KEYS or len(key) < 3:
+        return None
+    return key
 
 
 def _folder_has_project_marker(folder: str, files: list[dict]) -> bool:
@@ -36,12 +42,14 @@ def build_version_retention_plan(
 ) -> dict:
     """Find explicit old version archives and whole code-project folders.
 
-    Nothing is deleted here. Candidates appear only when a family contains more
-    than ``keep_latest`` explicit versions. Whole code folders require a direct
-    project marker so ordinary numbered folders are not touched.
+    Nothing is permanently deleted. A candidate requires more than
+    ``keep_latest`` *distinct explicit versions* of one non-generic artifact in
+    the same parent. Whole code folders additionally require a direct project
+    marker, so ordinary numbered folders are never treated as old code.
     """
     keep_latest = max(1, min(50, int(keep_latest)))
     groups: dict[tuple[str, str, str], list[dict]] = {}
+    rejected_generic = 0
 
     for record in files:
         name = str(record.get("name") or "")
@@ -51,7 +59,11 @@ def build_version_retention_plan(
         info = detect_version(name)
         if not path or not info or suffix not in ARCHIVE_EXTENSIONS:
             continue
-        key = ("archive", parent.casefold(), artifact_key(name))
+        family = _safe_family_key(name)
+        if not family:
+            rejected_generic += 1
+            continue
+        key = ("archive", parent.casefold(), family)
         groups.setdefault(key, []).append(
             {"kind": "file", "source": path, "name": name, "version": info.normalized, "sort_key": info.sort_key}
         )
@@ -63,7 +75,11 @@ def build_version_retention_plan(
         info = detect_version(name)
         if not path or not info or not _folder_has_project_marker(path, files):
             continue
-        key = ("folder", parent.casefold(), artifact_key(name))
+        family = _safe_family_key(name)
+        if not family:
+            rejected_generic += 1
+            continue
+        key = ("folder", parent.casefold(), family)
         groups.setdefault(key, []).append(
             {"kind": "folder", "source": path, "name": name, "version": info.normalized, "sort_key": info.sort_key}
         )
@@ -71,7 +87,6 @@ def build_version_retention_plan(
     candidates: list[dict] = []
     families: list[dict] = []
     for (kind, parent_key, family), members in groups.items():
-        # Same version copied multiple times must not cause a retention action.
         by_version: dict[str, list[dict]] = {}
         for member in members:
             by_version.setdefault(member["version"], []).append(member)
@@ -122,6 +137,7 @@ def build_version_retention_plan(
             "candidates": len(candidates),
             "archive_candidates": sum(1 for item in candidates if item["kind"] == "file"),
             "folder_candidates": sum(1 for item in candidates if item["kind"] == "folder"),
+            "generic_families_rejected": rejected_generic,
             "permanent_deletes": 0,
         },
     }
