@@ -47,6 +47,8 @@ def _self_test(root: Path) -> int:
         from core import folder_family_planner as _folder_family_test  # noqa: F401
         from core import folder_tree as _folder_tree_test  # noqa: F401
         from core import full_features_runtime as _full_features_test  # noqa: F401
+        from core import generic_compaction_runtime as _generic_compaction_runtime_test  # noqa: F401
+        from core import generic_project_compactor as _generic_project_compactor_test  # noqa: F401
         from core import layout_memory as _layout_memory_test  # noqa: F401
         from core import local_ai as _local_ai_test  # noqa: F401
         from core import maximum_safety_runtime as _maximum_safety_test  # noqa: F401
