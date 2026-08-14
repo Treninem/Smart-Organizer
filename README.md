@@ -57,7 +57,9 @@ Folder names alone are not trusted. Real direct contents of a folder are stronge
 Undo acts as negative local feedback: when the user reverses a normal move, the exact same source → destination pair is remembered locally and is not offered again as an automatic action.
 
 ### Whole-folder compaction
-The organizer can recognize obvious top-level project folders and move the **whole folder** into an already existing user container such as `Боты`, `Minecraft` or `Программы`. It never flattens or merges the project's internals. If more than one container looks valid, nothing is moved.
+The organizer can recognize obvious top-level project folders and move the **whole folder** into an already existing user container. Known project types still understand containers such as `Боты`, `Minecraft` or `Программы`, but v0.2.15 also learns generic project containers directly from the user's hierarchy.
+
+A folder becomes a learned project container only when it already contains at least two immediate child project roots detected by real project markers such as `main.py`, `pyproject.toml`, `package.json`, `project.godot`, `server.properties`, `Cargo.toml` or `go.mod`. A loose top-level project can enter that container only when exactly one compatible container exists. Two possible containers stop the move. Project folders are always moved whole and are never flattened or merged.
 
 A loose root-level project file is routed into a project folder only when the destination is unambiguous. Several version folders without a clear canonical project folder cause the file to stay in place.
 
@@ -85,7 +87,8 @@ Three or more sibling folders with the same artifact identity and explicit versi
 - version recognition protected against ordinary counters, years and calendar dates;
 - existing-layout scoring plus ambiguity blocking;
 - repeated-confirmation placement learning with Undo demotion;
-- whole project-folder compaction into existing user containers;
+- learned generic project-container compaction from actual existing hierarchy;
+- known project-folder compaction into existing user containers;
 - conservative version-folder family grouping;
 - exact duplicate detection using quick signature plus full SHA-256 inside project scope;
 - ZIP analysis and RAR/7Z listing without extraction;
