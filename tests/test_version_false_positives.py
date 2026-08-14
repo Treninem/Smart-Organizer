@@ -31,6 +31,10 @@ class VersionFalsePositiveTests(unittest.TestCase):
         self.assertEqual("v1.15.9", detect_version("Reader 1.15.9.zip").normalized)
         self.assertEqual("v12-beta2", detect_version("build 12-beta2.zip").normalized)
 
+    def test_dotted_folder_name_keeps_numeric_suffix_as_version(self):
+        self.assertEqual("v1.15.9", detect_version("SmartOrganizer_v1.15.9").normalized)
+        self.assertEqual("smartorganizer", artifact_key("SmartOrganizer_v1.15.9"))
+
     def test_artifact_key_keeps_year_but_removes_real_version(self):
         self.assertEqual("report 2026", artifact_key("report 2026.pdf"))
         self.assertEqual("smart organizer", artifact_key("Smart Organizer v0.2.8.zip"))
