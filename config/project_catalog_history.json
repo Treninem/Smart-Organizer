@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "projects": [
+    {
+      "name": "Treninem-Game",
+      "type": "single-player PC game",
+      "repository": "Treninem/game",
+      "aliases": ["Treninem Game", "Новая игра для ПК", "Одиночная RPG", "Single-player RPG"],
+      "folder_aliases": ["game", "Treninem-game", "Treninem Game"],
+      "keywords": ["treninem game", "single player rpg", "single-player rpg", "одиночная rpg"],
+      "status": "current",
+      "notes": "Отдельная новая игра для ПК. Не смешивать с Minecraft ImPuls или старым концептом выживания."
+    },
+    {
+      "name": "Documentation-Translation",
+      "type": "PDF/document digitization and translation",
+      "repository": null,
+      "aliases": ["Перевод документации", "Оцифровка документации", "PDF Translation"],
+      "folder_aliases": ["Документация", "Перевод документации", "PDF Translation"],
+      "keywords": ["перевод документации", "оцифровка документации", "pdf translation", "manual translation", "translated manual"],
+      "status": "current",
+      "notes": "Фото страниц, PDF, OCR/редактирование и перевод технической документации."
+    },
+    {
+      "name": "Personal-Website",
+      "type": "personal website",
+      "repository": null,
+      "aliases": ["Персональный сайт", "Personal Website"],
+      "folder_aliases": ["Персональный сайт", "Personal Website"],
+      "keywords": ["персональный сайт", "personal website"],
+      "status": "concept",
+      "notes": "Отдельный персональный веб-проект."
+    }
+  ],
+  "templates": [
+    {
+      "name": "Single-player RPG / Survival Game",
+      "type": "pc-game-singleplayer",
+      "keywords": ["single player", "single-player", "rpg", "survival", "crafting", "open world", "quest", "npc", "inventory"],
+      "markers": ["Assets", "Content", "Scenes", "Scripts", "ProjectSettings", "project.godot", "save", "quests"]
+    },
+    {
+      "name": "Technical PDF Translation",
+      "type": "technical-document-translation",
+      "keywords": ["manual", "documentation", "translation", "ocr", "перевод", "документация", "инструкция"],
+      "markers": ["PDF", "DOCX", "Sources", "Original", "Translated", "Images"]
+    },
+    {
+      "name": "GitHub Release Package",
+      "type": "release-package",
+      "keywords": ["release", "runtime", "artifact", "installer", "update", "version"],
+      "markers": ["version.json", "runtime-manifest.json", "CHANGELOG.md", "INSTALL.cmd", "updater.exe"]
+    },
+    {
+      "name": "Comic / Manga Localization Package",
+      "type": "comic-localization",
+      "keywords": ["comic", "manga", "manhwa", "webtoon", "translation", "localization", "комикс", "манга", "перевод"],
+      "markers": ["cover.jpg", "metadata.json", "description.txt", "LICENSE.txt", "SOURCES.txt", "Chapters"]
+    }
+  ],
+  "rules": [
+    {
+      "id": "known-project-route-before-category",
+      "action": "prefer_unique_known_project_route_before_generic_file_category",
+      "confidence": 1.0,
+      "explanation": "Если скачанный файл однозначно относится к известному проекту и существует его целевая папка, проектный маршрут важнее общего маршрута Архивы/Код/Документы."
+    }
+  ]
+}
