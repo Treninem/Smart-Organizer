@@ -37,6 +37,107 @@ def _install_real_windows_folder_resolver(main_window) -> None:
     main_window.SmartOrganizerApp.scan_desktop = scan_desktop
 
 
+def _install_settings_and_close_fixes(main_window) -> None:
+    """Restore functional settings and make application shutdown unconditional."""
+    import tkinter as tk
+    from tkinter import messagebox, ttk
+
+    def _get_bool(self, key: str, default: bool) -> bool:
+        value = self.db.get_setting(key, default)
+        return bool(value)
+
+    def _save_settings(self) -> None:
+        values = getattr(self, "_settings_vars", {})
+        for key, var in values.items():
+            self.db.set_setting(key, bool(var.get()))
+        self.status_var.set("Настройки сохранены.")
+        messagebox.showinfo("Smart Organizer", "Настройки сохранены.")
+
+    def show_settings(self) -> None:
+        self.clear_content()
+        ttk.Label(self.content, text="Настройки", style="Title.TLabel").pack(anchor="w", pady=(4, 8))
+        ttk.Label(
+            self.content,
+            text="Измените параметры и нажмите «Сохранить». Они сохраняются локально на ПК.",
+            justify="left",
+        ).pack(anchor="w", pady=(0, 12))
+
+        frame = ttk.LabelFrame(self.content, text="Поведение программы", padding=14)
+        frame.pack(fill="x", anchor="w")
+
+        defaults = {
+            "safe_mode": True,
+            "prefer_existing_structure": True,
+            "auto_delete": False,
+            "auto_move": False,
+            "monitor_enabled": True,
+            "background_enabled": True,
+            "auto_update_enabled": True,
+        }
+        labels = {
+            "safe_mode": "Безопасный режим",
+            "prefer_existing_structure": "Предпочитать существующую структуру",
+            "auto_delete": "Автоматическое удаление",
+            "auto_move": "Автоматическое перемещение",
+            "monitor_enabled": "Монитор ПК и сети",
+            "background_enabled": "Фоновая работа",
+            "auto_update_enabled": "Автоматические обновления",
+        }
+
+        self._settings_vars = {}
+        for key, default in defaults.items():
+            var = tk.BooleanVar(value=_get_bool(self, key, default))
+            self._settings_vars[key] = var
+            ttk.Checkbutton(frame, text=labels[key], variable=var).pack(anchor="w", pady=3)
+
+        ttk.Separator(self.content).pack(fill="x", pady=16)
+        buttons = ttk.Frame(self.content)
+        buttons.pack(fill="x", anchor="w")
+        ttk.Button(buttons, text="💾 Сохранить", command=self._save_settings).pack(side="left", padx=(0, 8))
+        ttk.Button(buttons, text="↩ Отмена", command=self.show_home).pack(side="left")
+        ttk.Label(
+            self.content,
+            text="Изменения не применяются частично: сначала нажмите «Сохранить».\n"
+                 "Даже при выключенных параметрах кнопка закрытия и Alt+F4 работают всегда.",
+            justify="left",
+        ).pack(anchor="w", pady=(14, 0))
+
+    def _force_exit_app(self) -> None:
+        """Best-effort shutdown that cannot be blocked by a worker or a DB error."""
+        if getattr(self, "_closing", False):
+            return
+        self._closing = True
+        try:
+            self.monitor_stop.set()
+        except Exception:
+            pass
+        try:
+            self.after_cancel(getattr(self, "_update_after_id", ""))
+        except Exception:
+            pass
+        try:
+            self.db.close()
+        except Exception:
+            pass
+        try:
+            self.quit()
+        except Exception:
+            pass
+        try:
+            self.destroy()
+        except Exception:
+            pass
+
+    def on_close(self) -> None:
+        self._force_exit_app()
+
+    main_window.SmartOrganizerApp._get_bool = _get_bool
+    main_window.SmartOrganizerApp._save_settings = _save_settings
+    main_window.SmartOrganizerApp.show_settings = show_settings
+    main_window.SmartOrganizerApp._force_exit_app = _force_exit_app
+    main_window.SmartOrganizerApp.on_close = on_close
+
+
 def _run_app_self_test(app) -> None:
     screens = [
         app.show_home,
@@ -89,6 +190,10 @@ def main() -> None:
             getattr(module, function_name)(main_window)
         except Exception as exc:
             startup_warnings.append(f"{label}: {exc}")
+
+    # Apply the final UI/shutdown patch after all runtime installers so that
+    # later modules cannot overwrite the fixed handlers.
+    _install_settings_and_close_fixes(main_window)
 
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
