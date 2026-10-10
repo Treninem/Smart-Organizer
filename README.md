@@ -11,6 +11,38 @@ Local-first Windows assistant for practical file, project and version organizati
 - Applied batches are journaled and reversible with Undo.
 - Background automation is intentionally stricter than interactive suggestions.
 
+## New: PC care and developer coordination (experimental branch)
+
+The work-in-progress branch feature/pc-care-and-worker-journal introduces an integrated
+**Оптимизация ПК** screen without changing the released version.
+
+- **Game mode**: optional user-defined game executable names plus a separate explicit
+  list of user-background executables. A lightweight periodic check detects a running
+  game, lowers only matching NORMAL process priorities to BELOW_NORMAL, and tries to
+  restore them on game exit and normal organizer shutdown. Never kills processes,
+  touches REALTIME, changes affinity, or shuts down Windows components. No promised FPS
+  gain: measure on your game and machine.
+- **Application inventory**: reads registered uninstall entries (machine/user, 32/64-bit
+  registry views), including publisher and version. Missing publisher is *not* a malware
+  verdict. Opens the official Windows Apps & Features uninstaller interface.
+- **Startup and processes**: reads Run keys and Startup shortcuts without modifying
+  them; lists currently running processes by memory use.
+- **Advertising/PUA protection entry point**: explicit Microsoft Defender QuickScan
+  request, and links to the Windows Security UI for viewing actual detections,
+  PUA blocking and quarantine. This is not a proprietary adware scanner.
+- **Files and projects**: the existing project-safe routing, reversible batches,
+  quarantine and Undo remain the only file-operation engine; actual installed program
+  directories are not automatically relocated.
+- **For all contributors**: AGENTS.md and docs/PROJECT_MASTER_LOG.md are the single
+  coordination rules and development journal. Local data/ and operation journal are
+  separate and never committed.
+
+Still *not* implemented in this branch: unattended uninstall of arbitrary software,
+residual registry/file cleanup, per-game measured FPS profiles, detection of browser
+hijackers beyond Microsoft Defender, user-configured desktop shortcut group fences.
+Those have explicit tracked acceptance criteria in the master journal. Windows CI and
+real-device performance measurements are required before claiming release readiness.
+
 ## v0.2.16
 
 This release turns Smart Organizer into an always-on Windows helper while keeping the safety model conservative.
