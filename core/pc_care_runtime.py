@@ -8,6 +8,7 @@ from tkinter import messagebox, ttk
 
 from core.game_priority import GameModeController, parse_names
 from core.defender_report import defender_report, report_text
+from core.installed_audit import installation_review, installation_review_text
 from core.desktop_shortcuts import parse_shortcut_rules, plan_shortcut_sort
 from core.operation_journal import OperationJournal
 from core.operation_executor import execute_batch, undo_batch
@@ -119,6 +120,8 @@ def install_pc_care_runtime(main_window) -> None:
         def work():
             if kind == "apps":
                 return installed_applications()
+            if kind == "recent":
+                return installation_review(installed_applications())
             if kind == "startup":
                 return startup_entries()
             return running_processes()
@@ -128,6 +131,11 @@ def install_pc_care_runtime(main_window) -> None:
                 return
             output.configure(state="normal")
             output.delete("1.0", "end")
+            if kind == "recent":
+                output.insert("end", installation_review_text(items))
+                output.configure(state="disabled")
+                self.status_var.set("История установок сформирована: только анализ дат.")
+                return
             if kind == "apps":
                 output.insert("end", f"Установленные приложения: {len(items)}\n")
                 output.insert("end", "Нет издателя ≠ вирус. Это только повод проверить приложение.\n\n")
@@ -349,6 +357,10 @@ def install_pc_care_runtime(main_window) -> None:
             ttk.Button(
                 app_buttons, text=label, command=lambda k=kind: self._render_pc_inventory(k)
             ).pack(side="left", padx=(0, 8))
+        ttk.Button(
+            applications, text="Программы, установленные одновременно",
+            command=lambda: self._render_pc_inventory("recent"),
+        ).pack(anchor="w", pady=5)
         ttk.Button(
             applications, text="Открыть удаление программ Windows",
             command=lambda: self._pc_launch(open_installed_apps),
