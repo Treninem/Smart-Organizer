@@ -83,7 +83,6 @@ def install_background_runtime(main_window) -> None:
     cls._background_runtime_installed = True
 
     original_init = cls.__init__
-    original_on_close = cls.on_close
     original_show_home = cls.show_home
 
     def _power_settings(self) -> dict:
@@ -211,7 +210,7 @@ def install_background_runtime(main_window) -> None:
                 "background_enabled": bool(self._power_vars["background_enabled"].get()),
                 "background_interval_minutes": interval,
                 "start_with_windows": bool(self._power_vars["start_with_windows"].get()),
-                "close_to_background": bool(self._power_vars["close_to_background"].get()),
+                "close_to_background": False,  # Legacy option; × always exits.
                 "auto_sort_downloads": bool(self._power_vars["auto_sort_downloads"].get()),
                 "download_min_age_seconds": age,
                 "separate_chatgpt": bool(self._power_vars["separate_chatgpt"].get()),
@@ -321,7 +320,9 @@ def install_background_runtime(main_window) -> None:
 
     def _force_exit_app(self) -> None:
         self._force_real_exit = True
-        original_on_close(self)
+        # The final main.py shutdown handler is installed after runtime layers.
+        # During runtime initialization, fall back to the original close handler.
+        cls.on_close(self)
 
     def show_settings(self) -> None:
         if hasattr(self, "_set_stable_nav"):
@@ -371,7 +372,7 @@ def install_background_runtime(main_window) -> None:
 
         ttk.Checkbutton(background, text="Работать в фоне", variable=self._power_vars["background_enabled"]).grid(row=0, column=0, columnspan=3, sticky="w")
         ttk.Checkbutton(background, text="Запускать вместе с Windows", variable=self._power_vars["start_with_windows"]).grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 0))
-        ttk.Checkbutton(background, text="Крестик сворачивает в фон, а не завершает программу", variable=self._power_vars["close_to_background"]).grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
+        ttk.Label(background, text="Крестик × и Alt+F4 закрывают программу полностью. Кнопка — сворачивает окно.").grid(row=2, column=0, columnspan=3, sticky="w", pady=(8, 0))
         ttk.Label(background, text="Фоновая проверка каждые").grid(row=3, column=0, sticky="w", pady=(12, 0))
         ttk.Entry(background, textvariable=self._power_vars["background_interval_minutes"], width=7).grid(row=3, column=1, sticky="w", padx=6, pady=(12, 0))
         ttk.Label(background, text="минут").grid(row=3, column=2, sticky="w", pady=(12, 0))
@@ -497,12 +498,9 @@ def install_background_runtime(main_window) -> None:
         ).pack(anchor="w")
 
     def on_close(self) -> None:
-        settings = self._power_settings()
-        if settings.get("background_enabled") and settings.get("close_to_background") and not getattr(self, "_force_real_exit", False):
-            self.iconify()
-            self.status_var.set("Smart Organizer свёрнут и продолжает работать в фоне. Для полного выхода: Настройки → Полностью выйти.")
-            return
-        original_on_close(self)
+        # Closing a window must mean closing the application. Background mode
+        # continues only when the user explicitly minimizes the window.
+        self._force_exit_app()
 
     def __init__(self, *args, **kwargs):
         self._background_after_id = None
