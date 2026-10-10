@@ -415,10 +415,18 @@ def install_pc_care_runtime(main_window) -> None:
         )
 
     def _force_exit_app(self):
-        controller = getattr(self, "_game_controller", None)
-        if controller:
-            controller.restore_all()
-        return original_exit(self)
+        # User shutdown is never prevented by a failed priority restoration.
+        try:
+            controller = getattr(self, "_game_controller", None)
+            if controller:
+                controller.restore_all()
+        except Exception as exc:
+            try:
+                self.db.log_action("game-priority-restore", None, "warning", str(exc))
+            except Exception:
+                pass
+        finally:
+            return original_exit(self)
 
     cls.__init__ = __init__
     cls._game_poll = _game_poll
