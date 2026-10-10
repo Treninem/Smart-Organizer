@@ -11,6 +11,29 @@ Local-first Windows assistant for practical file, project and version organizati
 - Applied batches are journaled and reversible with Undo.
 - Background automation is intentionally stricter than interactive suggestions.
 
+## Critical hotfix: close always exits (2026-10-10)
+
+User-reported issue: Smart Organizer could appear impossible to close because
+legacy background settings defaulted to **X = minimize**, automatic Windows
+startup was on by default, and a later settings override hid the original
+**Полностью выйти** action.
+
+New behavior:
+
+- The titlebar X, Alt+F4, and Ctrl+Q always **exit the application**.
+- An always-visible **⏻ Полностью выйти** sidebar button works from every page.
+- The minimization button **—** is the way to keep Smart Organizer running.
+- Saved legacy `close_to_background=true` settings no longer make X hide the app.
+- Windows autostart is off for *new* installations; existing explicitly saved
+  autostart settings are respected and can be changed in restored full settings.
+- Exit stops timers, suppresses update-driven restart requests and closes SQLite
+  without deleting `data/`, `logs/`, settings or any user files.
+
+The hotfix requires Windows tests and a real installed runtime smoke test before
+publication. If an *older* installation remains open, users can close it using
+Windows Task Manager → SmartOrganizer.exe → End task as an emergency workaround.
+Do not treat ending the task as a normal shutdown when file actions are ongoing.
+
 ## v0.2.16
 
 This release turns Smart Organizer into an always-on Windows helper while keeping the safety model conservative.
