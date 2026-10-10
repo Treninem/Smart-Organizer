@@ -9,6 +9,7 @@ from tkinter import messagebox, ttk
 from core.game_priority import GameModeController, parse_names
 from core.defender_report import defender_report, report_text
 from core.installed_audit import installation_review, installation_review_text
+from core.msi_uninstall import eligible_msi_items, launch_msi_uninstall
 from core.desktop_shortcuts import parse_shortcut_rules, plan_shortcut_sort
 from core.operation_journal import OperationJournal
 from core.operation_executor import execute_batch, undo_batch
@@ -192,6 +193,66 @@ def install_pc_care_runtime(main_window) -> None:
             "чтобы посмотреть ход проверки и результат.",
         )
 
+    def _pc_load_msi_items(self):
+        combo = getattr(self, "_pc_msi_combo", None)
+        if combo is None or not combo.winfo_exists():
+            return
+
+        def done(apps):
+            if not combo.winfo_exists():
+                return
+            items = eligible_msi_items(apps)
+            self._pc_msi_choices = {
+                f"{i['name']} — {i['version'] or '—'} ({i['product_code']})": i
+                for i in items
+            }
+            combo.configure(values=tuple(self._pc_msi_choices))
+            self._pc_msi_selected.set("")
+            self.status_var.set(f"Установленных MSI, доступных для выбора: {len(items)}.")
+            if not items:
+                messagebox.showinfo(
+                    "MSI", "Подтверждённых MSI-пакетов не найдено. "
+                           "Используйте штатное удаление приложений Windows."
+                )
+
+        self._start_worker("Получаю проверенный список MSI-программ…", installed_applications, done)
+
+    def _pc_uninstall_selected_msi(self):
+        key = self._pc_msi_selected.get()
+        item = getattr(self, "_pc_msi_choices", {}).get(key)
+        if not item:
+            messagebox.showwarning("MSI", "Сначала обновите список и выберите MSI-программу.")
+            return
+        code = item["product_code"]
+        # Re-validate against current Windows registry before launching msiexec.
+        try:
+            current = {r["product_code"]: r for r in eligible_msi_items(installed_applications())}
+        except Exception as exc:
+            messagebox.showerror("MSI", f"Не удалось перепроверить реестр: {exc}")
+            return
+        if code not in current or current[code]["name"] != item["name"]:
+            messagebox.showwarning("MSI", "Список программ изменился. Обновите список.")
+            return
+        if not messagebox.askyesno(
+            "Подтвердить удаление через Windows Installer",
+            f"Удалить выбранную программу?\n\n{item['name']}\n"
+            f"Издатель: {item['publisher'] or 'не указан'}\n"
+            f"Код MSI: {code}\n\n"
+            "Откроется официальный Windows Installer, который может попросить "
+            "разрешение администратора. Изменение нельзя отменить одним нажатием Undo.",
+        ):
+            return
+        try:
+            pid = launch_msi_uninstall(code)
+            self.db.log_action("msi-uninstall-launched", code, "launched",
+                               f"name={item['name']}; pid={pid}")
+            self.status_var.set("Удаление MSI запущено; результат подтвердит Windows Installer.")
+            messagebox.showinfo("Удаление MSI",
+                                "Открыто штатное окно удаления. "
+                                "Запуск не означает успешное завершение — проверьте его результат.")
+        except Exception as exc:
+            messagebox.showerror("Удаление MSI", str(exc))
+
     def _pc_show_defender_report(self):
         output = getattr(self, "_pc_inventory", None)
         if output is None or not output.winfo_exists():
@@ -361,6 +422,27 @@ def install_pc_care_runtime(main_window) -> None:
             applications, text="Программы, установленные одновременно",
             command=lambda: self._render_pc_inventory("recent"),
         ).pack(anchor="w", pady=5)
+        ttk.Label(
+            applications, text="Удаление MSI через штатный Windows Installer "
+                               "(только проверенный GUID и явное подтверждение):",
+            wraplength=820,
+        ).pack(anchor="w", pady=(6, 0))
+        self._pc_msi_selected = tk.StringVar(value="")
+        self._pc_msi_choices = {}
+        self._pc_msi_combo = ttk.Combobox(
+            applications, state="readonly", textvariable=self._pc_msi_selected, width=78
+        )
+        self._pc_msi_combo.pack(fill="x", pady=3)
+        msi_buttons = ttk.Frame(applications)
+        msi_buttons.pack(fill="x", pady=3)
+        ttk.Button(
+            msi_buttons, text="Обновить список MSI",
+            command=self._pc_load_msi_items,
+        ).pack(side="left", padx=(0, 6))
+        ttk.Button(
+            msi_buttons, text="Удалить выбранную MSI",
+            command=self._pc_uninstall_selected_msi,
+        ).pack(side="left", padx=6)
         ttk.Button(
             applications, text="Открыть удаление программ Windows",
             command=lambda: self._pc_launch(open_installed_apps),
@@ -448,6 +530,8 @@ def install_pc_care_runtime(main_window) -> None:
     cls._pc_defender_scan = _pc_defender_scan
     cls.show_pc_care = show_pc_care
     cls._pc_show_defender_report = _pc_show_defender_report
+    cls._pc_load_msi_items = _pc_load_msi_items
+    cls._pc_uninstall_selected_msi = _pc_uninstall_selected_msi
     cls._pc_preview_desktop = _pc_preview_desktop
     cls._pc_apply_desktop = _pc_apply_desktop
     cls._pc_undo_desktop = _pc_undo_desktop
