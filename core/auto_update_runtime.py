@@ -63,6 +63,8 @@ def install_auto_update_runtime(main_window) -> None:
         self._auto_update_after_id = self.after(minutes * 60_000, self.check_updates_silent)
 
     def _restart_application(self) -> None:
+        if getattr(self, "_closing", False):
+            return
         if getattr(self, "_restart_started", False):
             return
         self._restart_started = True
@@ -99,6 +101,8 @@ def install_auto_update_runtime(main_window) -> None:
         self.destroy()
 
     def _restart_when_idle(self) -> None:
+        if getattr(self, "_closing", False):
+            return
         if not getattr(self, "_restart_pending", False):
             return
         if _worker_active(self):
@@ -112,6 +116,8 @@ def install_auto_update_runtime(main_window) -> None:
 
     def _finish_update_check(self, result: dict, manual: bool) -> None:
         self._update_thread = None
+        if getattr(self, "_closing", False):
+            return
         latest = str(result.get("latest") or result.get("version") or "?")
         if result.get("updated"):
             version = str(result.get("version", latest))
@@ -137,6 +143,8 @@ def install_auto_update_runtime(main_window) -> None:
         self._schedule_next_update()
 
     def _start_update_check(self, manual: bool = False) -> None:
+        if getattr(self, "_closing", False):
+            return
         update_thread = getattr(self, "_update_thread", None)
         if update_thread and update_thread.is_alive():
             if manual:
