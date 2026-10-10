@@ -44,7 +44,7 @@
 | SO-PC-004 | Microsoft Defender quick scan | **В ветке, проверка ожидается** | кнопка запроса QuickScan + переход в Windows Security; результат показывает сама Windows. |
 | SO-PC-005 | Встроенная вкладка «Оптимизация ПК» | **В ветке, проверка ожидается** | отдельный экран в приложении, тесты UI Windows, размеры и DPI. |
 | SO-REL-001 | PR/Windows CI/установка/восстановление | **v0.3.0: проверка PR и выпуска** | проверка SHA, PR quality gate, затем установка/запуск Windows; без автоматического выпуска. |
-| SO-PC-006 | Безопасное пакетное удаление ПО | **ПЛАН** | список подтверждений, штатные деинсталляторы, отсутствие silent/untrusted shell, отмена между действиями. |
+| SO-PC-006 | Безопасное пакетное удаление ПО | **ЧАСТИЧНО: одиночное интерактивное MSI; пакетная очередь план** | список подтверждений, штатные деинсталляторы, отсутствие silent/untrusted shell, отмена между действиями. |
 | SO-PC-007 | Анализ остатков после uninstall | **ПЛАН** | идентификация владельца файла/реестра, обязательный preview, backup/quarantine; запрет общих DLL/данных. |
 | SO-PC-008 | Проверка PUA, браузерных расширений | **ЧАСТИЧНО: есть подлинный отчёт Defender; остальное план** | Defender события и репутация с источником; карантин через доверенный движок; тест на ложные срабатывания. |
 | SO-GAME-002 | Дополнительные настройки и FPS | **ПЛАН** | профили Steam/Epic/пользовательских игр, исключения, реальные CPU/RAM/FPS/1% low измерения без собственной нагрузки. |
@@ -63,7 +63,7 @@
 |---|---|---|---|---|---|
 | SO-COORD-001 / SO-PC-001..005 / SO-REL-001 | ChatGPT (первичная интеграция) | 2026-10-10 | feature/pc-care-and-worker-journal | AGENTS.md, docs/PROJECT_MASTER_LOG.md, core/pc_health.py, core/game_priority.py, core/pc_care_runtime.py, main.py, tests/test_pc_care.py, .github/workflows/pr-quality.yml | DONE — передача в PR/CI |
 
-| SO-REQ-2026-10-10 / SO-PC-008 / SO-DESKTOP-001 / SO-REL-001 | ChatGPT (широкий инкремент v0.3.0) | 2026-10-10 | feature/pc-care-and-worker-journal | core/desktop_shortcuts.py, core/defender_report.py, core/installed_audit.py, core/pc_care_runtime.py, bootstrap.py, tests/test_pc_extended.py, tests/test_installed_audit.py, docs/RELEASE_NOTES_0_3_0.md, manifests, workflows | DONE — тесты и выпуск по отдельному CI gate |
+| SO-REQ-2026-10-10 / SO-PC-008 / SO-DESKTOP-001 / SO-REL-001 | ChatGPT (широкий инкремент v0.3.0) | 2026-10-10 | feature/pc-care-and-worker-journal | core/desktop_shortcuts.py, core/defender_report.py, core/installed_audit.py, core/msi_uninstall.py, core/pc_care_runtime.py, bootstrap.py, tests/test_pc_extended.py, tests/test_installed_audit.py, docs/RELEASE_NOTES_0_3_0.md, manifests, workflows | DONE — тесты и выпуск по отдельному CI gate |
 
 Следующий работник открывает новую строку CLAIM до начала своей работы и не редактирует одновременно принадлежащие чужому ACTIVE CLAIM файлы. Устаревший CLAIM помечается STALE только после проверки GitHub и внесения причины.
 
@@ -101,9 +101,9 @@ NEXT: подтвердить сборку и доставку нового runti
 
 DIRECTION: SO-REQ-2026-10-10; SO-PC-001..005; SO-PC-008 частично; SO-DESKTOP-001 частично; SO-REL-001.
 
-ACTION: дополнены opt-in оптимизация игр, инвентаризация программ/автозагрузки/процессов, история одновременных установок с явной пометкой о невозможности установить вредоносность по дате, отчёт Microsoft Defender по актуальным данным самого Windows, кнопка QuickScan и переход в «Безопасность Windows». Добавлена управляемая пользователем группировка ярлыков Desktop в существующий журнал операций с подтверждением и Undo; EXE и каталоги программ не перемещаются. Подготовлен v0.3.0, полноценный ZIP для установки, контрольные суммы SHA-256, tagged release и rolling update. Исправлена невозможность штатно закрыть программу при ошибке восстановления приоритета.
+ACTION: дополнены opt-in оптимизация игр, инвентаризация программ/автозагрузки/процессов, интерактивное удаление выбранных проверенных MSI через msiexec без запуска UninstallString из реестра, история одновременных установок с явной пометкой о невозможности установить вредоносность по дате, отчёт Microsoft Defender по актуальным данным самого Windows, кнопка QuickScan и переход в «Безопасность Windows». Добавлена управляемая пользователем группировка ярлыков Desktop в существующий журнал операций с подтверждением и Undo; EXE и каталоги программ не перемещаются. Подготовлен v0.3.0, полноценный ZIP для установки, контрольные суммы SHA-256, tagged release и rolling update. Исправлена невозможность штатно закрыть программу при ошибке восстановления приоритета.
 
-FILES: core/installed_audit.py, core/defender_report.py, core/desktop_shortcuts.py, core/pc_care_runtime.py, tests/test_installed_audit.py, tests/test_pc_extended.py, bootstrap.py, README.md, docs/RELEASE_NOTES_0_3_0.md, .github/workflows/build-windows.yml, version.json, runtime-manifest.json, update-manifest.json.
+FILES: core/msi_uninstall.py, core/installed_audit.py, core/defender_report.py, core/desktop_shortcuts.py, core/pc_care_runtime.py, tests/test_msi_uninstall.py, tests/test_installed_audit.py, tests/test_pc_extended.py, bootstrap.py, README.md, docs/RELEASE_NOTES_0_3_0.md, .github/workflows/build-windows.yml, version.json, runtime-manifest.json, update-manifest.json.
 
 TEST: Windows CI **выполняется; результат проверять по актуальному HEAD**. Новые тесты охватывают группировку .lnk/.url без перемещения приложений, реальный журнал операций + Undo, коллизии, разбор отчётов Microsoft Defender, неоднозначные даты установки. Реальный FPS и массовое удаление программ не проверялись и не реализованы.
 
