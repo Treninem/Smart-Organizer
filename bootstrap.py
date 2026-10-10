@@ -68,6 +68,9 @@ def _self_test(root: Path) -> int:
         from core import game_priority as _game_priority_test  # noqa: F401
         from core import pc_health as _pc_health_test  # noqa: F401
         from core import pc_care_runtime as _pc_care_ui_test  # noqa: F401
+        from core import defender_report as _defender_report_test  # noqa: F401
+        from core import installed_audit as _installed_audit_test  # noqa: F401
+        from core import desktop_shortcuts as _desktop_shortcuts_test  # noqa: F401
         from core import safe_layout_runtime as _safe_layout_test  # noqa: F401
         from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
