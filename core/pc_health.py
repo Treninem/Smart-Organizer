@@ -79,6 +79,7 @@ def installed_applications() -> list[dict]:
                         "installed": str(_get_value(key, "InstallDate")).strip(),
                         "scope": scope,
                         "registry_key": key_name,
+                        "windows_installer": _get_value(key, "WindowsInstaller", 0) == 1,
                         "review": not bool(publisher),
                     })
     return sorted(result, key=lambda item: item["name"].casefold())
