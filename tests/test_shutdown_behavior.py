@@ -75,8 +75,7 @@ class ShutdownTests(unittest.TestCase):
         app = cls()
         app.db.close.side_effect = RuntimeError("busy db")
         app.quit.side_effect = RuntimeError("Tk exiting")
-        with self.assertRaises(RuntimeError):
-            app.on_close()
+        app.on_close()
         app.destroy.assert_called_once_with()
 
     def test_existing_close_to_background_setting_is_disabled(self):
