@@ -7,6 +7,11 @@ import tkinter as tk
 from tkinter import messagebox, ttk
 
 from core.game_priority import GameModeController, parse_names
+from core.defender_report import defender_report, report_text
+from core.desktop_shortcuts import parse_shortcut_rules, plan_shortcut_sort
+from core.operation_journal import OperationJournal
+from core.operation_executor import execute_batch, undo_batch
+from core.windows_paths import desktop_path
 from core.pc_health import (
     installed_applications, open_installed_apps, open_windows_security,
     running_processes, start_defender_quick_scan, startup_entries,
@@ -179,6 +184,113 @@ def install_pc_care_runtime(main_window) -> None:
             "чтобы посмотреть ход проверки и результат.",
         )
 
+    def _pc_show_defender_report(self):
+        output = getattr(self, "_pc_inventory", None)
+        if output is None or not output.winfo_exists():
+            self.show_pc_care()
+            output = self._pc_inventory
+
+        def done(report):
+            if not output.winfo_exists():
+                return
+            output.configure(state="normal")
+            output.delete("1.0", "end")
+            output.insert("end", report_text(report))
+            output.configure(state="disabled")
+            self.status_var.set("Данные Microsoft Defender получены; файлов не удалено.")
+
+        self._start_worker("Получаю подлинный отчёт Microsoft Defender…", defender_report, done)
+
+    def _pc_preview_desktop(self):
+        output = getattr(self, "_pc_inventory", None)
+        if output is None or not output.winfo_exists():
+            return
+        raw_rules = self._pc_shortcut_rules.get()
+        try:
+            plan = plan_shortcut_sort(desktop_path(), parse_shortcut_rules(raw_rules))
+        except (OSError, ValueError) as exc:
+            messagebox.showwarning("Группы ярлыков", str(exc))
+            return
+        self.db.set_setting("desktop_shortcut_rules", raw_rules)
+        self._desktop_last_plan = plan
+        output.configure(state="normal")
+        output.delete("1.0", "end")
+        output.insert("end", "ПРЕДПРОСМОТР ГРУППИРОВКИ ЯРЛЫКОВ\n\n")
+        output.insert("end", f"Перемещений: {len(plan['matches'])}; неоднозначных/конфликтов: "
+                      f"{len(plan['ambiguous'])}; без правила: {plan['untouched']}\n\n")
+        for item in plan["matches"][:100]:
+            output.insert("end", f"{item['name']}\n  → {item['category']}\n")
+        if plan["ambiguous"]:
+            output.insert("end", "\nПропущены (неоднозначность либо уже существует цель):\n")
+            for name in plan["ambiguous"][:30]:
+                output.insert("end", "  " + name + "\n")
+        output.insert("end", "\nНикакие файлы не перемещены. Выполнение требует подтверждения.\n")
+        output.configure(state="disabled")
+        self.status_var.set("План ярлыков готов: изменений 0.")
+
+    def _pc_apply_desktop(self):
+        plan = getattr(self, "_desktop_last_plan", None)
+        if not plan or not plan.get("matches"):
+            messagebox.showinfo("Ярлыки", "Сначала сформируйте непустой план сортировки ярлыков.")
+            return
+        if not messagebox.askyesno(
+            "Подтверждение группировки",
+            f"Переместить {len(plan['matches'])} ярлыков в подпапки рабочего стола?\n\n"
+            "Оригинальные программы и папки установки не затрагиваются. "
+            "Перемещение можно отменить через журнал. Продолжить?",
+        ):
+            return
+        # A fresh plan prevents moves based on stale preview or changed rules.
+        try:
+            current = plan_shortcut_sort(desktop_path(), parse_shortcut_rules(
+                self._pc_shortcut_rules.get()
+            ))
+            if [(r["source"], r["target"]) for r in current["matches"]] != [
+                (r["source"], r["target"]) for r in plan["matches"]
+            ]:
+                raise ValueError("Рабочий стол или правила изменились. Снова нажмите «Предпросмотр».")
+            journal = OperationJournal(self.db)
+            batch_id = journal.plan_batch(current["operations"], label="desktop-shortcuts")
+        except (OSError, ValueError) as exc:
+            messagebox.showwarning("Ярлыки", str(exc))
+            return
+
+        def work():
+            return execute_batch(journal, batch_id)
+
+        def done(result):
+            self.db.set_setting("desktop_shortcut_last_batch", batch_id)
+            self._desktop_last_plan = None
+            self.db.log_action("desktop-shortcuts", batch_id, "ok",
+                               f"applied={result['applied']}; files={len(plan['matches'])}")
+            self.status_var.set(
+                f"Сортировка ярлыков применена: {len(plan['matches'])}. Доступна отмена.")
+            messagebox.showinfo("Готово", "Ярлыки разложены. Используйте «Отменить группировку» для отката.")
+
+        self._start_worker("Группирую выбранные ярлыки с журналом Undo…", work, done)
+
+    def _pc_undo_desktop(self):
+        batch_id = self.db.get_setting("desktop_shortcut_last_batch")
+        if not batch_id:
+            messagebox.showinfo("Undo", "Нет последнего применённого пакета группировки.")
+            return
+        if not messagebox.askyesno(
+            "Отмена группировки",
+            "Вернуть ярлыки последнего пакета на прежние места? "
+            "Занятые пути не будут перезаписаны.",
+        ):
+            return
+
+        def work():
+            return undo_batch(OperationJournal(self.db), batch_id)
+
+        def done(result):
+            self.db.set_setting("desktop_shortcut_last_batch", "")
+            self.status_var.set(f"Undo группировки: {result['undone']} операций.")
+            messagebox.showinfo("Undo", f"Отменено операций: {result['undone']}.")
+
+        self._start_worker("Отменяю группировку ярлыков…", work, done)
+
     def show_pc_care(self):
         if hasattr(self, "_set_stable_nav"):
             self._set_stable_nav("Оптимизация ПК")
@@ -198,9 +310,11 @@ def install_pc_care_runtime(main_window) -> None:
         games = ttk.Frame(notebook, padding=12)
         applications = ttk.Frame(notebook, padding=12)
         security = ttk.Frame(notebook, padding=12)
+        shortcuts = ttk.Frame(notebook, padding=12)
         notebook.add(games, text="Игровой режим")
         notebook.add(applications, text="Программы и процессы")
         notebook.add(security, text="Безопасность")
+        notebook.add(shortcuts, text="Ярлыки рабочего стола")
 
         settings = self.db.get_setting("game_priority_mode", {}) or {}
         self._pc_enabled = tk.BooleanVar(value=bool(settings.get("enabled")))
@@ -256,6 +370,10 @@ def install_pc_care_runtime(main_window) -> None:
             security, text="Запустить проверку Defender", command=self._pc_defender_scan
         ).pack(anchor="w", pady=4)
         ttk.Button(
+            security, text="Последние обнаружения и защита Defender",
+            command=self._pc_show_defender_report,
+        ).pack(anchor="w", pady=4)
+        ttk.Button(
             security, text="Открыть Безопасность Windows",
             command=lambda: self._pc_launch(open_windows_security),
         ).pack(anchor="w", pady=4)
@@ -263,6 +381,32 @@ def install_pc_care_runtime(main_window) -> None:
             security, text="Перейти к сортировке файлов и папок",
             command=self.show_files,
         ).pack(anchor="w", pady=4)
+
+        ttk.Label(
+            shortcuts, text="Правила «Название ярлыка=Группа», разделённые ;. "
+                            "Группы: Игры, Программы, Работа, Документы.",
+            wraplength=810,
+        ).pack(anchor="w")
+        self._pc_shortcut_rules = tk.StringVar(
+            value=str(self.db.get_setting("desktop_shortcut_rules", "") or "")
+        )
+        ttk.Entry(shortcuts, textvariable=self._pc_shortcut_rules, width=78).pack(
+            fill="x", pady=4
+        )
+        ttk.Label(
+            shortcuts, text="Например: Steam=Игры; Minecraft=Игры; Chrome=Программы. "
+                            "Обрабатываются только .lnk/.url непосредственно на рабочем столе. "
+                            "Неизвестные или спорные ярлыки останутся на месте.",
+            wraplength=830,
+        ).pack(anchor="w", pady=3)
+        shortcut_buttons = ttk.Frame(shortcuts)
+        shortcut_buttons.pack(fill="x", pady=3)
+        ttk.Button(shortcut_buttons, text="Предпросмотр", command=self._pc_preview_desktop).pack(
+            side="left", padx=(0, 6))
+        ttk.Button(shortcut_buttons, text="Группировать", command=self._pc_apply_desktop).pack(
+            side="left", padx=6)
+        ttk.Button(shortcut_buttons, text="Отменить группировку", command=self._pc_undo_desktop).pack(
+            side="left", padx=6)
 
         self._pc_inventory = self._result_box()
         self._pc_inventory.insert(
@@ -283,4 +427,8 @@ def install_pc_care_runtime(main_window) -> None:
     cls._pc_launch = _pc_launch
     cls._pc_defender_scan = _pc_defender_scan
     cls.show_pc_care = show_pc_care
+    cls._pc_show_defender_report = _pc_show_defender_report
+    cls._pc_preview_desktop = _pc_preview_desktop
+    cls._pc_apply_desktop = _pc_apply_desktop
+    cls._pc_undo_desktop = _pc_undo_desktop
     cls._force_exit_app = _force_exit_app
