@@ -11,6 +11,19 @@ Local-first Windows assistant for practical file, project and version organizati
 - Applied batches are journaled and reversible with Undo.
 - Background automation is intentionally stricter than interactive suggestions.
 
+## v0.3.0 — интегрированный уход за ПК (Windows)
+
+**Новые реальные функции:** в разделе «Оптимизация ПК» появились игровой режим по EXE с
+обратимым снижением приоритета выбранных фоновых приложений, каталог установленных
+программ/автозагрузки/процессов, история одновременных установок, проверка и отчёт
+Microsoft Defender и сортировка **ярлыков** рабочего стола с журналом/Undo.
+
+Программное удаление рекламного ПО и полный массовый деинсталлятор пока **не** встроены.
+Вместо рискованных догадок используется Microsoft Defender и штатное удаление Windows.
+Файловая сортировка из предыдущих версий сохранена; рабочие папки установленных игр
+и приложений не перестраиваются. Полные примечания: `docs/RELEASE_NOTES_0_3_0.md`.
+Для новых пользователей предназначен `SmartOrganizer-Windows-Installer.zip` из релиза.
+
 ## Critical hotfix: close always exits (2026-10-10)
 
 User-reported issue: Smart Organizer could appear impossible to close because
