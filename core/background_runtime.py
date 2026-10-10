@@ -83,6 +83,7 @@ def install_background_runtime(main_window) -> None:
     cls._background_runtime_installed = True
 
     original_init = cls.__init__
+    original_on_close = cls.on_close
     original_show_home = cls.show_home
 
     def _power_settings(self) -> dict:
@@ -320,9 +321,9 @@ def install_background_runtime(main_window) -> None:
 
     def _force_exit_app(self) -> None:
         self._force_real_exit = True
-        # The final main.py shutdown handler is installed after runtime layers.
-        # During runtime initialization, fall back to the original close handler.
-        cls.on_close(self)
+        # Used until the final main.py shutdown handler replaces this method.
+        # Call the captured original directly to avoid recursive dispatch.
+        original_on_close(self)
 
     def show_settings(self) -> None:
         if hasattr(self, "_set_stable_nav"):
