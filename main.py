@@ -81,6 +81,8 @@ def _install_settings_and_close_fixes(main_window) -> None:
             pass
         try:
             self.quit()
+        except Exception:
+            pass
         finally:
             try:
                 self.destroy()
