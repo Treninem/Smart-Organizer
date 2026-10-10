@@ -43,7 +43,7 @@
 | SO-PC-003 | Безопасный игровой режим | **В ветке, проверка ожидается** | явные exe, монитор запуска, изменение только normal→below normal, восстановление при выходе; испытать на реальной игре. |
 | SO-PC-004 | Microsoft Defender quick scan | **В ветке, проверка ожидается** | кнопка запроса QuickScan + переход в Windows Security; результат показывает сама Windows. |
 | SO-PC-005 | Встроенная вкладка «Оптимизация ПК» | **В ветке, проверка ожидается** | отдельный экран в приложении, тесты UI Windows, размеры и DPI. |
-| SO-REL-001 | PR/Windows CI/установка/восстановление | **Ожидает проверки** | проверка SHA, PR quality gate, затем установка/запуск Windows; без автоматического выпуска. |
+| SO-REL-001 | PR/Windows CI/установка/восстановление | **PR #1: CI успешен; устройство не проверено** | проверка SHA, PR quality gate, затем установка/запуск Windows; без автоматического выпуска. |
 | SO-PC-006 | Безопасное пакетное удаление ПО | **ПЛАН** | список подтверждений, штатные деинсталляторы, отсутствие silent/untrusted shell, отмена между действиями. |
 | SO-PC-007 | Анализ остатков после uninstall | **ПЛАН** | идентификация владельца файла/реестра, обязательный preview, backup/quarantine; запрет общих DLL/данных. |
 | SO-PC-008 | Проверка PUA, браузерных расширений | **ПЛАН** | Defender события и репутация с источником; карантин через доверенный движок; тест на ложные срабатывания. |
@@ -72,11 +72,11 @@ DIRECTION: SO-REQ-2026-10-10 и SO-COORD-001, SO-PC-001..005, SO-REL-001.
 
 ACTION: изучен исходный код Smart-Organizer main и цепочка runtime, создана ветка feature/pc-care-and-worker-journal. Добавлены read-only реестр программ и автозагрузки, tasklist, защитный вызов Microsoft Defender QuickScan, opt-in менеджер приоритетов, встроенная вкладка и проверка GUI self-test; заведены AGENTS и журнал, добавлены unit tests и отдельный PR quality workflow.
 
-FILES: AGENTS.md; docs/PROJECT_MASTER_LOG.md; core/pc_health.py; core/game_priority.py; core/pc_care_runtime.py; main.py; tests/test_pc_care.py; .github/workflows/pr-quality.yml.
+FILES: AGENTS.md; docs/PROJECT_MASTER_LOG.md; README.md; bootstrap.py; core/pc_health.py; core/game_priority.py; core/pc_care_runtime.py; main.py; tests/test_pc_care.py; .github/workflows/pr-quality.yml.
 
-TEST: добавлены unit tests и независимый Windows PR workflow. На момент записи **нет подтверждённых результатов CI, Windows-инсталляции и теста в реальной игре**; не объявлять готовым.
+TEST: Windows PR quality run #38038353654 на SHA f21a677c4b60addeb33a1fd824dddd88a63853ac: **SUCCESS**; Python compileall успешно, **160/160 unit tests OK** (Windows runner). Это не проверка установленного релиза, GUI или FPS. Новые коммиты после указанного SHA требуют повторного CI.
 
-RESULT: реализация находится в рабочей ветке, существующий main/релиз не изменялся. Отсутствуют проверенные измерения FPS и подтверждение эффективности в конкретной игре.
+RESULT: Draft PR https://github.com/Treninem/Smart-Organizer/pull/1; первый CI https://github.com/Treninem/Smart-Organizer/actions/runs/38038353654 успешен. main/релиз не изменялся. Отсутствуют проверенные измерения FPS и подтверждение эффективности в конкретной игре.
 
 NEXT: дождаться результата PR quality, исправить реальные падения/ошибки и протестировать сохранение/восстановление приоритетов в пользовательском сценарии; затем по отдельным CLAIM двигаться к удалению рекламных установок, остаткам, автозагрузке и группам ярлыков. Никогда не выпускать всё как якобы завершённое без проверки.
 
