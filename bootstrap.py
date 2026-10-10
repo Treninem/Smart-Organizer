@@ -71,6 +71,7 @@ def _self_test(root: Path) -> int:
         from core import defender_report as _defender_report_test  # noqa: F401
         from core import installed_audit as _installed_audit_test  # noqa: F401
         from core import desktop_shortcuts as _desktop_shortcuts_test  # noqa: F401
+        from core import msi_uninstall as _msi_uninstall_test  # noqa: F401
         from core import safe_layout_runtime as _safe_layout_test  # noqa: F401
         from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
