@@ -26,8 +26,8 @@ MAX_BACKGROUND_ARCHIVE_INSPECTION_BYTES = 2 * 1024 * 1024 * 1024
 DEFAULT_POWER_SETTINGS = {
     "background_enabled": True,
     "background_interval_minutes": 5,
-    "start_with_windows": True,
-    "close_to_background": True,
+    "start_with_windows": False,
+    "close_to_background": False,
     "auto_sort_downloads": True,
     "download_min_age_seconds": 120,
     "separate_chatgpt": True,
@@ -79,6 +79,10 @@ def normalized_power_settings(value) -> dict:
         "auto_correct_own_moves",
     ):
         result[key] = bool(result.get(key))
+    # Legacy builds minimized on the close button by default and hid the
+    # exit action behind a settings view. Never carry that behavior forward,
+    # including saved user settings from affected builds.
+    result["close_to_background"] = False
     return result
 
 
