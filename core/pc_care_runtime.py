@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import threading
 import tkinter as tk
 from tkinter import messagebox, ttk
 
@@ -41,13 +42,16 @@ def install_pc_care_runtime(main_window) -> None:
             return
         settings = self.db.get_setting("game_priority_mode", {}) or {}
         enabled = bool(settings.get("enabled"))
-        # Never spawn continuous tasklist work until the user has opted in.
+        # Dedicated worker: do not block file-sorting operations or Tk's main thread.
         if enabled and not self._game_poll_busy:
             self._game_poll_busy = True
 
-            def finish(processes):
+            def finish(processes, error):
                 self._game_poll_busy = False
                 if getattr(self, "_closing", False):
+                    return
+                if error is not None:
+                    self.status_var.set(f"Игровой режим: нельзя прочитать процессы ({error}).")
                     return
                 current = self.db.get_setting("game_priority_mode", {}) or {}
                 result = self._game_controller.tick(
@@ -62,20 +66,17 @@ def install_pc_care_runtime(main_window) -> None:
                         f"; ограничено {result['limited_now']}, восстановлено {result['restored']}."
                     )
 
-            def failed(_error):
-                self._game_poll_busy = False
-                # A manual restart can recover if tasklist temporarily fails.
             def work():
-                return running_processes()
+                try:
+                    processes, error = running_processes(), None
+                except Exception as exc:
+                    processes, error = [], str(exc)
+                try:
+                    self.after(0, lambda: finish(processes, error))
+                except RuntimeError:
+                    pass
 
-            # Avoid scheduling a second task concurrently with file operations.
-            worker = getattr(self, "worker", None)
-            if not worker or not worker.is_alive():
-                self._start_worker("Игровой режим: проверка процессов…", work, finish)
-                # _start_worker's error handler resets only its own state.
-                self.after(12000, lambda: setattr(self, "_game_poll_busy", False))
-            else:
-                self._game_poll_busy = False
+            threading.Thread(target=work, daemon=True).start()
         elif not enabled and self._game_controller._lowered:
             self._game_controller.restore_all()
             self._game_last_state = None
