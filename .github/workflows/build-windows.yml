@@ -101,6 +101,16 @@ jobs:
           $gui = Start-Process -FilePath (Join-Path $testDir 'SmartOrganizer.exe') -ArgumentList '--app-self-test' -Wait -PassThru -WorkingDirectory $testDir
           if ($gui.ExitCode -ne 0) { throw "Installed GUI startup self-test failed with exit code $($gui.ExitCode)" }
 
+      - name: Package installer and checksums
+        shell: pwsh
+        run: |
+          Compress-Archive -Path package\* -DestinationPath dist\SmartOrganizer-Windows-Installer.zip -CompressionLevel Optimal -Force
+          $artifacts = @('SmartOrganizer-runtime.zip', 'SmartOrganizer-Windows-Installer.zip', 'updater.exe')
+          foreach ($name in $artifacts) {
+            $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath "dist\$name").Hash.ToLower()
+            "$hash *$name" | Out-File -LiteralPath dist\SHA256SUMS.txt -Encoding ascii -Append
+          }
+
       - name: Publish atomic runtime update
         shell: pwsh
         env:
@@ -109,14 +119,37 @@ jobs:
           $notes = "Atomic onedir runtime bundle. data/ and logs/ are never included or replaced."
           gh release view auto-latest *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release upload auto-latest "dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip" "dist/updater.exe#updater.exe" --clobber
+            gh release upload auto-latest "dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip" "dist/SmartOrganizer-Windows-Installer.zip#SmartOrganizer-Windows-Installer.zip" "dist/updater.exe#updater.exe" "dist/SHA256SUMS.txt#SHA256SUMS.txt" --clobber
             if ($LASTEXITCODE -ne 0) { throw 'Failed to upload runtime assets' }
             gh release edit auto-latest --target "${{ github.sha }}" --title "Smart Organizer Runtime Update" --notes $notes
             if ($LASTEXITCODE -ne 0) { throw 'Failed to update rolling release metadata' }
           } else {
-            gh release create auto-latest "dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip" "dist/updater.exe#updater.exe" --target "${{ github.sha }}" --title "Smart Organizer Runtime Update" --notes $notes
+            gh release create auto-latest "dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip" "dist/SmartOrganizer-Windows-Installer.zip#SmartOrganizer-Windows-Installer.zip" "dist/updater.exe#updater.exe" "dist/SHA256SUMS.txt#SHA256SUMS.txt" --target "${{ github.sha }}" --title "Smart Organizer Runtime Update" --notes $notes
             if ($LASTEXITCODE -ne 0) { throw 'Failed to create rolling runtime release' }
           }
+
+      - name: Publish versioned Windows release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content version.json -Raw | ConvertFrom-Json).version
+          $tag = "v$version"
+          $files = @(
+            'dist/SmartOrganizer-runtime.zip#SmartOrganizer-runtime.zip',
+            'dist/SmartOrganizer-Windows-Installer.zip#SmartOrganizer-Windows-Installer.zip',
+            'dist/updater.exe#updater.exe',
+            'dist/SHA256SUMS.txt#SHA256SUMS.txt'
+          )
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag @files --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Failed to refresh release assets for $tag" }
+            gh release edit $tag --target "${{ github.sha }}" --notes-file docs/RELEASE_NOTES_0_3_0.md
+          } else {
+            gh release create $tag @files --target "${{ github.sha }}" --title "Smart Organizer v$version" --notes-file docs/RELEASE_NOTES_0_3_0.md
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish tagged release $tag" }
 
       - name: Read package version
         id: package_version

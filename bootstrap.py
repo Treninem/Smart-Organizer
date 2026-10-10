@@ -5,6 +5,7 @@ features can update without replacing the launcher every stage.
 """
 from __future__ import annotations
 
+import csv  # noqa: F401
 import ctypes  # noqa: F401
 import hashlib  # noqa: F401
 import json  # noqa: F401
@@ -40,6 +41,9 @@ def _self_test(root: Path) -> int:
     import uuid as _uuid_test  # noqa: F401
     import zipfile as _zipfile_test  # noqa: F401
 
+    if os.name == "nt":
+        import winreg  # noqa: F401 (Windows registry inventory)
+
     if (root / "core").is_dir():
         from core import adaptive_feedback_runtime as _adaptive_feedback_test  # noqa: F401
         from core import background_engine as _background_engine_test  # noqa: F401
@@ -61,6 +65,13 @@ def _self_test(root: Path) -> int:
         from core import operation_executor as _operation_executor_test  # noqa: F401
         from core import operation_journal as _operation_journal_test  # noqa: F401
         from core import placement_learning as _placement_learning_test  # noqa: F401
+        from core import game_priority as _game_priority_test  # noqa: F401
+        from core import pc_health as _pc_health_test  # noqa: F401
+        from core import pc_care_runtime as _pc_care_ui_test  # noqa: F401
+        from core import defender_report as _defender_report_test  # noqa: F401
+        from core import installed_audit as _installed_audit_test  # noqa: F401
+        from core import desktop_shortcuts as _desktop_shortcuts_test  # noqa: F401
+        from core import msi_uninstall as _msi_uninstall_test  # noqa: F401
         from core import safe_layout_runtime as _safe_layout_test  # noqa: F401
         from core import stable_workflow_runtime as _stable_workflow_test  # noqa: F401
         from core import ui_runtime as _ui_runtime_test  # noqa: F401
