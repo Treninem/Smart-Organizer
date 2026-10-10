@@ -150,6 +150,8 @@ def _run_app_self_test(app) -> None:
     ]
     if hasattr(app, "show_diagnostics"):
         screens.append(app.show_diagnostics)
+    if hasattr(app, "show_pc_care"):
+        screens.append(app.show_pc_care)
     for screen in screens:
         screen()
         app.update_idletasks()
@@ -194,6 +196,13 @@ def main() -> None:
     # Apply the final UI/shutdown patch after all runtime installers so that
     # later modules cannot overwrite the fixed handlers.
     _install_settings_and_close_fixes(main_window)
+
+    # PC-care wraps the final exit handler and adds a screen to the real sidebar.
+    try:
+        from core.pc_care_runtime import install_pc_care_runtime
+        install_pc_care_runtime(main_window)
+    except Exception as exc:
+        startup_warnings.append(f"оптимизация ПК: {exc}")
 
     app = main_window.SmartOrganizerApp()
     if startup_warnings:
