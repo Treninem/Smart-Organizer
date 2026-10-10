@@ -75,6 +75,40 @@ def set_priority(pid: int, priority: int) -> bool:
         kernel.CloseHandle(handle)
 
 
+
+def process_image_path(pid: int) -> str | None:
+    """Resolve the executable identity without opening a process for mutation."""
+    if os.name != "nt":
+        return None
+    import ctypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_uint32]
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.QueryFullProcessImageNameW.argtypes = [
+        ctypes.c_void_p, ctypes.c_uint32, ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_uint32)
+    ]
+    kernel.QueryFullProcessImageNameW.restype = ctypes.c_int
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel.OpenProcess(0x1000, 0, pid)
+    if not handle:
+        return None
+    try:
+        buffer = ctypes.create_unicode_buffer(32768)
+        count = ctypes.c_uint32(len(buffer))
+        if kernel.QueryFullProcessImageNameW(handle, 0, buffer, ctypes.byref(count)):
+            return buffer.value
+        return None
+    finally:
+        kernel.CloseHandle(handle)
+
+
+def is_windows_system_process(pid: int) -> bool:
+    path = process_image_path(pid)
+    windows_root = os.environ.get("WINDIR", r"C:\Windows")
+    return bool(path and path.casefold().startswith(windows_root.casefold().rstrip("\\") + "\\"))
+
+
 class GameModeController:
     """Maintain changes only for user-selected processes, restoring on game exit."""
 
@@ -118,6 +152,8 @@ class GameModeController:
             for pid, name in by_pid.items():
                 if pid == own_pid or name not in candidate_set or pid in self._lowered:
                     continue
+                if is_windows_system_process(pid):
+                    continue
                 try:
                     priority = read_priority(pid)
                     if priority == NORMAL_PRIORITY and write_priority(pid, BELOW_NORMAL_PRIORITY):
@@ -130,7 +166,13 @@ class GameModeController:
 
     def restore_all(self, *, read_priority=get_priority, write_priority=set_priority) -> int:
         restored = 0
-        for pid, (_name, original) in list(self._lowered.items()):
+        for pid, (name, original) in list(self._lowered.items()):
+            # Never restore a priority to a PID reused by a different executable.
+            if os.name == "nt":
+                identity = process_image_path(pid)
+                if not identity or identity.replace("/", "\\").split("\\")[-1].casefold() != name:
+                    self._lowered.pop(pid, None)
+                    continue
             try:
                 if read_priority(pid) == BELOW_NORMAL_PRIORITY and write_priority(pid, original):
                     restored += 1
